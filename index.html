@@ -1,0 +1,1823 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Silver Booth: grab bottles with your hand and pour drinks on camera.">
+</head>
+<body>
+<title>Silver Booth</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<script>try { if (localStorage.getItem('silverbooth.look') === 'dark') document.documentElement.setAttribute('data-look', 'dark'); } catch (e) {}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Big+Shoulders+Display:wght@800&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: a sticky top bar with search, filter chips, then a masonry feed of pins (live effects and your own photos and strips).
+   Opening a pin shows a close-up card: the live camera on the left, details and the shutter on the right, "More like this" below. */
+:root {
+  --bg: #FFFFFF;
+  --ink: #111111;
+  --muted: #62625F;
+  --field: #EDEDEB;
+  --hover: #E3E3E1;
+  --card: #FFFFFF;
+  --card-shadow: 0 2px 24px rgba(0, 0, 0, .12);
+  --media-bg: #E9E9E7;
+  --accent: #C2461B;
+  --on-accent: #FFFFFF;
+  --chip-on: #111111;
+  --chip-on-ink: #FFFFFF;
+  --screen-ink: #F2F2F0;
+  --screen-dim: rgba(242, 242, 240, .7);
+  --screen-line: rgba(242, 242, 240, .32);
+  --screen-glass: rgba(0, 0, 0, .42);
+  --live: #F0953C;
+  --flash: #FFFFFF;
+  --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+/* White by default; the moon button in the top bar switches to dark and is remembered. */
+:root { color-scheme: light; }
+:root[data-look="dark"] {
+  --bg: #0E0E0F; --ink: #F2F2F0; --muted: #A3A3A0; --field: #232325; --hover: #303032;
+  --card: #18181A; --card-shadow: 0 2px 28px rgba(0, 0, 0, .55); --media-bg: #1F1F21;
+  --accent: #F0953C; --on-accent: #1B1006; --chip-on: #F2F2F0; --chip-on-ink: #0E0E0F;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html.locked, html.locked body { overflow: hidden; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: "";
+  position: fixed; inset: 0 0 auto;
+  height: env(safe-area-inset-top, 0px);
+  z-index: 30;
+  background: var(--bg);
+}
+.cam-feed { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+button { font-family: inherit; }
+button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+svg { display: block; }
+
+/* ---------- Top bar ---------- */
+.bar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 20;
+  background: var(--bg);
+}
+.bar-in {
+  max-width: 1480px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 4px 8px 4px 4px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+}
+.logo:hover { background: var(--hover); }
+.logo-mark {
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 800 18px/1 var(--display);
+  letter-spacing: .03em;
+}
+.logo-word { font: 800 25px/1 var(--display); text-transform: uppercase; letter-spacing: .01em; }
+.nav { display: flex; gap: 2px; flex: none; }
+.pill {
+  font: 600 15px/1 var(--body);
+  padding: 13px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color .15s;
+}
+.pill:hover { background: var(--hover); }
+.pill.on { background: var(--chip-on); color: var(--chip-on-ink); }
+.pill.accent { background: var(--accent); color: var(--on-accent); }
+.pill.accent:hover { filter: brightness(1.08); }
+.pill.soft { background: var(--field); }
+.pill.soft:hover { background: var(--hover); }
+.pill.big { padding: 15px 22px; font-size: 16px; }
+.pill:disabled { opacity: .5; cursor: not-allowed; }
+.search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--muted);
+}
+.search:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 50%, transparent); }
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: 500 16px var(--body);
+}
+.search input::placeholder { color: var(--muted); }
+.bar-actions { display: flex; gap: 6px; flex: none; }
+@media (max-width: 900px) {
+  .bar-in { flex-wrap: wrap; row-gap: 10px; }
+  .nav { display: none; }
+  .bar-actions { margin-left: auto; }
+  .search { order: 5; flex-basis: 100%; }
+}
+@media (max-width: 480px) {
+  .logo-word { display: none; }
+  .bar-actions .pill { padding: 12px 14px; font-size: 14px; }
+}
+
+/* ---------- Feed ---------- */
+.wrap {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding-block: 6px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.feed-head { display: grid; justify-items: center; gap: 12px; margin-bottom: 22px; }
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.chip {
+  font: 600 14.5px/1 var(--body);
+  padding: 11px 17px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--ink);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.chip:hover { background: var(--hover); }
+.chip[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-ink); }
+.status { margin: 0; font-size: 13px; color: var(--muted); text-align: center; max-width: 64ch; }
+.status .dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 8px; vertical-align: 0;
+  background: var(--muted);
+}
+.status.on .dot { background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 30%, transparent); }
+.empty { margin: 40px auto; text-align: center; color: var(--muted); max-width: 44ch; font-size: 16px; }
+
+.masonry { display: grid; align-items: start; }
+.mcol { display: grid; align-content: start; min-width: 0; }
+.pin { display: grid; gap: 8px; min-width: 0; margin-bottom: 8px; }
+.pin-media {
+  position: relative;
+  max-width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--media-bg);
+  isolation: isolate;
+}
+.pin-media canvas, .pin-media img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pin-open {
+  position: absolute; inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  cursor: zoom-in;
+  transition: background-color .15s;
+}
+.pin-media:hover .pin-open { background: rgba(0, 0, 0, .3); }
+.pin-open:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.pin-act {
+  position: absolute; top: 10px; right: 10px;
+  z-index: 1;
+  font: 600 14px/1 var(--body);
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.pin-media:hover .pin-act, .pin-act:focus-visible { opacity: 1; }
+@media (hover: none) { .pin-act.keep { opacity: 1; padding: 10px 13px; font-size: 13px; } }
+.pin-meta { display: grid; gap: 5px; padding: 0 4px; min-width: 0; }
+.pin-title { margin: 0; font: 600 14.5px/1.3 var(--body); overflow-wrap: anywhere; }
+.pin-sub { margin: 0; display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12.5px; color: var(--muted); }
+.pin-sub span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.av {
+  width: 24px; height: 24px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  font: 700 9.5px/1 var(--body);
+  letter-spacing: .02em;
+  color: #FFFFFF;
+}
+
+/* ---------- Close-up ---------- */
+.closeup {
+  max-width: 1016px;
+  margin: 6px auto 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  background: var(--card);
+  border-radius: 32px;
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+.media {
+  position: relative;
+  align-self: stretch;
+  max-width: 100%;
+  max-height: 82vh;
+  background: #000000;
+  overflow: hidden;
+  isolation: isolate;
+}
+.media.cap-mode { background: var(--media-bg); max-height: 78vh; }
+.media canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.media.immersive canvas { object-fit: cover; }
+.media.play canvas { touch-action: none; cursor: grab; }
+.media.play:active canvas { cursor: grabbing; }
+.media img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.media-back {
+  position: absolute; top: 14px; left: 14px;
+  z-index: 4;
+  width: 46px; height: 46px;
+  display: grid; place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .94);
+  color: #111111;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .2);
+}
+.media.immersive {
+  position: fixed; inset: 0;
+  z-index: 80;
+  max-height: none;
+  aspect-ratio: auto !important;
+}
+.media.immersive .media-back {
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: max(14px, env(safe-area-inset-left, 0px));
+}
+.media-ctl {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  z-index: 3;
+  display: none;
+  justify-items: center;
+  gap: 12px;
+  padding: 44px 14px 16px;
+  background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, .55));
+}
+.media.immersive .media-ctl {
+  display: grid;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
+}
+@media (max-width: 760px) { .media.fx-mode .media-ctl { display: grid; } }
+.shutter {
+  width: 74px; height: 74px;
+  padding: 0;
+  position: relative;
+  border: 4px solid var(--screen-ink);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.shutter::after {
+  content: "";
+  position: absolute; inset: 6px;
+  border-radius: 50%;
+  background: var(--screen-ink);
+  transition: transform .12s, background-color .2s;
+}
+.shutter.strip::after { background: var(--live); }
+.shutter:active:not(:disabled)::after { transform: scale(.86); }
+.shutter:disabled { opacity: .55; }
+.lamps {
+  position: absolute; top: 24px; left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  display: flex; gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--screen-glass);
+}
+.lamps i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--screen-dim); }
+.lamps i.on { background: var(--live); border-color: var(--live); }
+.lamps i.now { border-color: var(--live); animation: blink .8s steps(2, jump-none) infinite; }
+@keyframes blink { 50% { border-color: transparent; } }
+.count {
+  position: absolute; inset: 0;
+  z-index: 2;
+  display: grid; place-items: center;
+  font: 800 clamp(120px, 22vw, 260px)/1 var(--display);
+  color: var(--screen-ink);
+  text-shadow: 0 6px 40px rgba(0, 0, 0, .6);
+  pointer-events: none;
+}
+.count.tick { animation: tick .8s cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes tick {
+  0% { opacity: 0; transform: scale(1.35); }
+  25% { opacity: 1; transform: scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: .1; transform: scale(.94); }
+}
+.flash { position: absolute; inset: 0; z-index: 5; background: var(--flash); opacity: 0; pointer-events: none; }
+.flash.go { animation: flash .5s ease-out both; }
+@keyframes flash { 0% { opacity: .95; } 100% { opacity: 0; } }
+
+.seg { display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--field); }
+.seg button {
+  font: 600 14px/1 var(--body);
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-ink); }
+.seg button:disabled { cursor: default; }
+.seg.dark { background: var(--screen-glass); border: 1px solid var(--screen-line); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.seg.dark button { color: var(--screen-dim); }
+.seg.dark button[aria-pressed="true"] { background: var(--screen-ink); color: #000000; }
+
+.details { display: grid; align-content: start; gap: 22px; padding: 26px 32px 32px; min-width: 0; }
+.det-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.det-tools { display: flex; gap: 4px; }
+.round {
+  width: 46px; height: 46px;
+  display: grid; place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.round:hover { background: var(--hover); }
+.round[aria-pressed="false"] { color: var(--muted); }
+.round.soft { background: var(--field); color: var(--ink); flex: none; }
+.round.soft:hover { background: var(--hover); }
+.det-head { display: grid; gap: 8px; }
+.det-kind { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+.det-title { margin: 0; font: 700 clamp(28px, 3.4vw, 38px)/1.08 var(--body); letter-spacing: -.01em; text-wrap: balance; }
+.det-desc { margin: 0; font-size: 16px; line-height: 1.55; max-width: 46ch; }
+.block { display: grid; gap: 10px; }
+.block-label { margin: 0; font-size: 15px; font-weight: 600; }
+.block-text { margin: 0; font-size: 14px; color: var(--muted); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mine { display: flex; flex-wrap: wrap; gap: 8px; }
+.mine button {
+  height: 76px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--media-bg);
+  cursor: pointer;
+}
+.mine img { display: block; height: 100%; width: auto; }
+.more { margin-top: 40px; display: grid; gap: 18px; }
+.more-title { margin: 0; text-align: center; font: 700 22px/1.2 var(--body); }
+
+@media (max-width: 760px) {
+  .closeup { grid-template-columns: minmax(0, 1fr); border-radius: 24px; margin-top: 0; }
+  .media.fx-mode { max-height: none; }
+  .details { padding: 18px 18px 24px; gap: 18px; }
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  z-index: 90;
+  max-width: calc(100% - 32px);
+  padding: 13px 20px;
+  border-radius: 999px;
+  background: var(--chip-on);
+  color: var(--chip-on-ink);
+  font: 600 14px/1.3 var(--body);
+  text-align: center;
+  opacity: 0;
+  transform: translate(-50%, 16px);
+  transition: opacity .2s, transform .2s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .count.tick, .flash.go, .lamps i.now { animation: none !important; }
+  .toast { transition: none; }
+}
+</style>
+
+<video id="video" class="cam-feed" playsinline muted autoplay aria-hidden="true"></video>
+<input id="fileIn" type="file" accept="image/*" hidden>
+
+<header class="bar">
+  <div class="bar-in">
+    <button class="logo" id="logoBtn" type="button" aria-label="Silver Booth home">
+      <span class="logo-mark" aria-hidden="true">SB</span><span class="logo-word">Silver Booth</span>
+    </button>
+    <nav class="nav" aria-label="Main">
+      <button class="pill on" id="navHome" type="button">Home</button>
+      <button class="pill" id="navPins" type="button">Your pins</button>
+    </nav>
+    <label class="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5.5 5.5"/></svg>
+      <input id="q" type="search" placeholder="Search effects and your pins" autocomplete="off" aria-label="Search effects and your pins">
+    </label>
+    <div class="bar-actions">
+      <button class="round soft" id="lookBtn" type="button" aria-pressed="false" aria-label="Dark mode" title="Dark mode">
+        <svg id="moonIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z"/></svg>
+        <svg id="sunIcon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" hidden><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+      </button>
+      <button class="pill accent" id="camBtn" type="button">Turn on camera</button>
+      <button class="pill soft" id="photoBtn" type="button">Use a photo</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap" id="feedView">
+  <div class="feed-head">
+    <div class="chips" id="chips" aria-label="Filter pins">
+      <button class="chip" type="button" data-chip="all" aria-pressed="true">All</button>
+      <button class="chip" type="button" data-chip="pins" aria-pressed="false">Your pins</button>
+    </div>
+    <p class="status" id="status"><span class="dot"></span><span id="statusText"></span></p>
+  </div>
+  <p class="empty" id="feedEmpty" hidden></p>
+  <div class="masonry" id="feed"></div>
+</main>
+
+<main class="wrap" id="pinView" hidden>
+  <article class="closeup">
+    <div class="media fx-mode" id="media">
+      <div id="stage"></div>
+      <img id="capImg" alt="" hidden>
+      <div class="lamps" id="lamps" hidden aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="count" id="count" aria-hidden="true"></div>
+      <div class="flash" id="flash" aria-hidden="true"></div>
+      <button class="media-back" id="mediaBack" type="button" aria-label="Back">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg>
+      </button>
+      <div class="media-ctl" id="mediaCtl">
+        <div class="seg dark" role="group" aria-label="Capture mode">
+          <button type="button" data-mode="photo" aria-pressed="true">Photo</button>
+          <button type="button" data-mode="strip" aria-pressed="false">Strip</button>
+        </div>
+        <button class="shutter" id="shutter" type="button" aria-label="Take a photo"></button>
+      </div>
+    </div>
+
+    <div class="details">
+      <div class="det-top">
+        <div class="det-tools" id="detTools">
+          <button class="round" id="soundBtn" type="button" aria-pressed="true" aria-label="Sound" title="Sound">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5v14l-4.5-4.5H4z" fill="currentColor"/><path id="soundWave" d="M16 8.5a5 5 0 0 1 0 7M18.8 6a8.5 8.5 0 0 1 0 12"/></svg>
+          </button>
+          <button class="round" id="fullBtn" type="button" aria-label="Full screen" title="Full screen">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+          </button>
+        </div>
+        <button class="pill accent big" id="takeBtn" type="button">Take photo</button>
+        <button class="pill accent big" id="dlBtn" type="button" hidden>Download</button>
+      </div>
+
+      <div class="det-head">
+        <p class="det-kind" id="detKind"></p>
+        <h1 class="det-title" id="detTitle"></h1>
+        <p class="det-desc" id="detDesc"></p>
+      </div>
+
+      <div id="fxBlocks" class="details" style="padding:0">
+        <div class="block">
+          <p class="block-label">Mode</p>
+          <div class="seg" role="group" aria-label="Capture mode">
+            <button type="button" data-mode="photo" aria-pressed="true">Photo</button>
+            <button type="button" data-mode="strip" aria-pressed="false">Strip of 4</button>
+          </div>
+          <p class="block-text" id="modeText">One shot each time you press Take photo.</p>
+        </div>
+        <div class="block">
+          <p class="block-label">Camera</p>
+          <p class="block-text" id="srcText"></p>
+          <p class="block-text" id="handText" hidden></p>
+          <div class="row">
+            <button class="pill soft" id="pCam" type="button">Turn on camera</button>
+            <button class="pill soft" id="pPhoto" type="button">Use a photo</button>
+            <button class="pill soft" id="pFlip" type="button" hidden>Flip camera</button>
+            <button class="pill soft" id="resetGlasses" type="button" hidden>Fresh glasses</button>
+          </div>
+        </div>
+        <div class="block">
+          <p class="block-label" id="mineLabel">Your pins from this effect</p>
+          <div class="mine" id="mine"></div>
+          <p class="block-text" id="mineEmpty">Nothing yet. Your photos and strips will show up here.</p>
+        </div>
+      </div>
+
+      <div id="capBlocks" class="details" style="padding:0" hidden>
+        <div class="row">
+          <button class="pill soft" id="tryBtn" type="button">Try this effect</button>
+          <button class="pill soft" id="delBtn" type="button">Delete pin</button>
+          <span class="block-text" id="delAsk" hidden>Delete this pin?</span>
+          <button class="pill accent" id="delYes" type="button" hidden>Delete</button>
+          <button class="pill soft" id="delNo" type="button" hidden>Keep</button>
+        </div>
+        <p class="block-text">Pins last until you close this page. Download the ones you want to keep.</p>
+      </div>
+    </div>
+  </article>
+
+  <section class="more" aria-labelledby="moreTitle">
+    <h2 class="more-title" id="moreTitle">More like this</h2>
+    <div class="masonry" id="more"></div>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const MONO = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+  const DISPLAY = '"Big Shoulders Display", "Arial Narrow", Impact, sans-serif';
+  const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  // Inside the Claude artifact viewer the live camera is off, so effects run on a sample figure or your photo.
+  const inViewer = !!(window.claude && typeof window.claude.use === 'function');
+  const hasMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const canCam = hasMedia && !inViewer;
+  const downloadsP = inViewer ? Promise.resolve(window.claude.use('downloads')).catch(() => null) : Promise.resolve(null);
+  const store = (k, v) => {
+    try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ }
+    return null;
+  };
+  const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const p2 = n => String(n).padStart(2, '0');
+  const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const fmtWhen = d => `${p2(d.getDate())} ${MON[d.getMonth()]} ${d.getFullYear()}, ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+
+  // =====================================================================
+  // Effects. Each make(w, h) returns { canvas, step(src, t) }.
+  // src = { canvas, data: ImageData } holds the current (mirrored) camera frame.
+  // =====================================================================
+  // =====================================================================
+  // Inuman: an interactive effect. Real bottles are drawn into the camera picture.
+  // Close your hand on one to grab it (it follows your hand), tilt your hand to pour.
+  // =====================================================================
+  const DRINKS = [
+    // each drink pours its own color: blue gin, crystal-white vodka, amber beer
+    { name: 'GIN',   src: 'bottles/gin.png',   ar: 109 / 440, liquid: [70, 145, 235],  alpha: 0.72, size: 1.0 },
+    { name: 'VODKA', src: 'bottles/vodka.png', ar: 151 / 440, liquid: [238, 243, 250], alpha: 0.7,  size: 0.92 },
+    { name: 'BEER',  src: 'bottles/beer.png',  ar: 122 / 440, liquid: [222, 140, 24],  alpha: 0.92, size: 0.84, foam: true }
+  ];
+  DRINKS.forEach(d => { d.img = new Image(); d.img.src = d.src; });
+  const imgReady = im => im.complete && im.naturalWidth > 0;
+  const BODY = '"Archivo", system-ui, -apple-system, sans-serif';
+  const HAND_LINKS = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12],
+    [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
+  const TAU = Math.PI * 2;
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rgbStr = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+  const ease = u => u * u * (3 - 2 * u);
+
+  function makeInuman(w, h, opts = {}) {
+    const demo = !!opts.demo;
+    const canvas = mk(w, h), ctx = canvas.getContext('2d');
+    const overlay = demo ? null : mk(w, h), octx = overlay && overlay.getContext('2d');
+    if (overlay) overlay.style.pointerEvents = 'none';
+    const unit = Math.min(h * 0.34, w * 0.28);                // tallest bottle
+    const gh = unit * 0.55, gw = gh * 0.62;                    // glass size
+    // everything stands on a table a little above the bottom edge, so a hand can reach it without leaving the picture
+    const margin = Math.max(6, w * 0.03), floor = h - Math.max(margin, h * 0.12);
+    const TILT = 2.0, POUR_AT = 1.25;                          // auto-pour angle for mouse/finger; angle where pouring starts
+    const BASE = gh * 0.1, DEPTH = gh * 0.84;
+
+    const GP = new Path2D(), gt = gw / 2, gb = gw * 0.42, gr = gw * 0.08;
+    GP.moveTo(-gt, -gh / 2); GP.lineTo(gt, -gh / 2); GP.lineTo(gb, gh / 2 - gr);
+    GP.quadraticCurveTo(gb, gh / 2, gb - gr, gh / 2); GP.lineTo(-gb + gr, gh / 2);
+    GP.quadraticCurveTo(-gb, gh / 2, -gb, gh / 2 - gr); GP.closePath();
+
+    let cursor = margin;
+    const bottles = DRINKS.map((d, i) => {
+      const bh = unit * d.size, bw = bh * d.ar, hx = cursor + bw / 2, hy = floor - bh / 2;
+      cursor += bw * 1.3;
+      return { kind: 'bottle', d, di: i, bw, bh, hx, hy, x: hx, y: hy, tx: hx, ty: hy, rot: 0, want: 0,
+        held: null, byHand: false, a0: 0, off: { x: 0, y: 0 }, pouring: false, pourInto: null, landX: 0, landY: 0 };
+    });
+    const glasses = [0, 1, 2].map(i => {
+      const hx = w - margin - gw * 0.6 - (2 - i) * gw * 1.25, hy = floor - gh / 2;
+      return { kind: 'glass', hx, hy, x: hx, y: hy, tx: hx, ty: hy, rot: 0, want: 0, held: null, byHand: false, a0: 0,
+        off: { x: 0, y: 0 }, fill: 0, amounts: [0, 0, 0], color: [255, 255, 255], alpha: 0.5, fullFor: 0, bubbles: [],
+        pouring: false, drinking: false, mouth: null, landX: 0, landY: 0 };
+    });
+    const drops = [];
+    let touched = false;
+
+    // ---- input: grab (fist, pinch or press), carry, let go ----
+    const prevDown = {}, holds = {}, lastSeen = {};
+    function pick(p) {
+      const loose = !!p.hand;
+      let best = null, bd = Infinity;
+      // a hand gets a generous grab zone around each bottle and glass
+      for (const b of bottles) {
+        if (b.held) continue;
+        const dx = Math.abs(p.x - b.x), dy = Math.abs(p.y - b.y);
+        const rx = loose ? Math.max(b.bw * 1.9, unit * 0.2) : b.bw * 0.95, ry = b.bh * (loose ? 0.85 : 0.55);
+        if (dx < rx && dy < ry && dx + dy * 0.5 < bd) { bd = dx + dy * 0.5; best = b; }
+      }
+      for (const g of glasses) {
+        if (g.held) continue;
+        const dx = Math.abs(p.x - g.x), dy = Math.abs(p.y - g.y);
+        if (dx < gw * (loose ? 1.45 : 0.8) && dy < gh * (loose ? 1.15 : 0.75) && dx + dy * 0.5 < bd) { bd = dx + dy * 0.5; best = g; }
+      }
+      return best;
+    }
+    function release(id) { const o = holds[id]; if (o) { o.held = null; o.byHand = false; o.want = 0; } delete holds[id]; }
+    function handle(inputs, t) {
+      for (const p of inputs) {
+        lastSeen[p.id] = t;
+        const was = !!prevDown[p.id];
+        // grab when the hand closes near something, or when an already-closed hand moves onto it
+        if (p.down && !holds[p.id] && (!was || p.hand)) {
+          const o = pick(p);
+          if (o) {
+            holds[p.id] = o; o.held = p.id; o.byHand = !!p.hand; o.a0 = p.angle || 0;
+            o.off.x = o.x - p.x; o.off.y = o.y - p.y; touched = true;
+          }
+        }
+        if (!p.down && was) release(p.id);
+        const o = holds[p.id];
+        if (o && p.down) {
+          if (o.byHand) {
+            // snap into the palm, and turn with the hand
+            const ty = o.kind === 'bottle' ? -o.bh * 0.08 : 0;
+            o.off.x *= 0.8; o.off.y = ty + (o.off.y - ty) * 0.8;
+            const da = Math.atan2(Math.sin(p.angle - o.a0), Math.cos(p.angle - o.a0));
+            o.want = o.kind === 'bottle' ? clamp(da * 1.3, -2.6, 2.6) : clamp(da * 1.3, -2.2, 2.2);
+          }
+          o.tx = clamp(p.x + o.off.x, 0, w); o.ty = clamp(p.y + o.off.y, 0, h);
+        }
+        prevDown[p.id] = p.down;
+      }
+      // a hand that flickers out of view keeps its bottle for a moment; a lifted finger lets go at once
+      for (const id of Object.keys(lastSeen)) {
+        if (lastSeen[id] === t) continue;
+        if (t - lastSeen[id] > (id[0] === 'h' ? 0.35 : 0)) { release(id); delete prevDown[id]; delete lastSeen[id]; }
+      }
+    }
+
+    const mouthOf = b => ({ x: b.x + Math.sin(b.rot) * b.bh * 0.5, y: b.y - Math.cos(b.rot) * b.bh * 0.5 });
+    // a tipped glass spills over the rim corner on the side it leans toward
+    const lipOf = g => {
+      const lx = Math.sign(g.rot || 1) * gt, ly = -gh / 2, c = Math.cos(g.rot), s = Math.sin(g.rot);
+      return { x: g.x + lx * c - ly * s, y: g.y + lx * s + ly * c };
+    };
+    const surfaceY = g => g.y + gh / 2 - BASE - g.fill * DEPTH;
+    // where a stream from point m lands: in a glass below it, or on the table
+    function landing(from, m, dir) {
+      let g = null;
+      for (const gg of glasses) if (gg !== from && Math.abs(m.x - gg.x) < gw * 0.5 && m.y < surfaceY(gg) && Math.abs(gg.rot) < 0.6) { g = gg; break; }
+      return {
+        g,
+        x: g ? clamp(m.x, g.x - gw * 0.32, g.x + gw * 0.32) : m.x + dir * unit * 0.07,
+        y: g ? (g.fill >= 1 ? g.y - gh / 2 : surfaceY(g)) : floor
+      };
+    }
+    function addTo(g, add, color, alpha, shares) {
+      if (add <= 0) return;
+      const tot = g.fill + add;
+      for (let c = 0; c < 3; c++) g.color[c] = g.fill > 0 ? (g.color[c] * g.fill + color[c] * add) / tot : color[c];
+      g.alpha = g.fill > 0 ? (g.alpha * g.fill + alpha * add) / tot : alpha;
+      for (let i = 0; i < 3; i++) g.amounts[i] += shares[i] * add;
+      g.fill = tot;
+    }
+    function splash(x, y, color, alpha) {
+      if (drops.length < 90 && Math.random() < 0.85) {
+        drops.push({ x, y, vx: (Math.random() - 0.5) * unit * 0.9, vy: -Math.random() * unit * 1.2, life: 0.45, c: color.slice(), a: Math.max(0.65, alpha) });
+      }
+    }
+    function scaleGlass(g, keep) {
+      g.fill *= keep; g.amounts = g.amounts.map(a => a * keep);
+      if (g.fill < 0.01) { g.fill = 0; g.amounts = [0, 0, 0]; g.fullFor = 0; }
+    }
+    function mixName(g) {
+      const tot = g.amounts.reduce((a, b) => a + b, 0);
+      if (tot < 0.04) return '';
+      return g.amounts.map((a, i) => [a / tot, DRINKS[i].name]).filter(x => x[0] > 0.15)
+        .sort((a, b) => b[0] - a[0]).map(x => x[1]).join(' + ');
+    }
+
+    // ---- sound: a soft pouring hiss while liquid flows (live view only) ----
+    let pourSrc = null, pourGain = null;
+    function pourSound(on) {
+      if (demo) return;
+      if (!pourGain) {
+        if (!on || !soundOn) return;
+        const a = audio(); if (!a) return;
+        const buf = a.createBuffer(1, a.sampleRate, a.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        pourSrc = a.createBufferSource(); pourSrc.buffer = buf; pourSrc.loop = true;
+        const f = a.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 750; f.Q.value = 0.8;
+        pourGain = a.createGain(); pourGain.gain.value = 0;
+        pourSrc.connect(f).connect(pourGain).connect(a.destination); pourSrc.start();
+      }
+      pourGain.gain.setTargetAtTime(on && soundOn ? 0.14 : 0, actx.currentTime, 0.06);
+    }
+
+    function update(dt) {
+      const k = Math.min(1, dt * 16), back = Math.min(1, dt * 7);
+      for (const o of [...bottles, ...glasses]) {
+        if (o.held) { o.x += (o.tx - o.x) * k; o.y += (o.ty - o.y) * k; }
+        else { o.x += (o.hx - o.x) * back; o.y += (o.hy - o.y) * back; }
+      }
+      let anyPour = false;
+      for (const b of bottles) {
+        b.pouring = false; b.pourInto = null;
+        if (b.held && !b.byHand) {
+          // mouse or finger: tip the bottle automatically when it is over a glass
+          const mx = b.x + Math.sin(TILT) * b.bh * 0.5;
+          let target = null, best = Infinity;
+          for (const g of glasses) {
+            const dx = Math.abs(mx - g.x);
+            if (!g.held && dx < gw * 0.9 && b.y < g.y - gh * 0.2 && dx < best) { best = dx; target = g; }
+          }
+          b.want = target ? TILT : b.y < b.hy - b.bh * 0.2 ? 0.18 : 0;
+        }
+        b.rot += (b.want - b.rot) * Math.min(1, dt * 8);
+        if (Math.abs(b.rot) < POUR_AT) continue;
+        // pouring: the stream falls from the mouth into whatever glass is underneath, or onto the table
+        const m = mouthOf(b), strength = clamp((Math.abs(b.rot) - POUR_AT) / 0.6, 0.35, 1);
+        const L = landing(b, m, Math.sign(b.rot));
+        b.pouring = true; anyPour = true; b.mouth = m; b.pourInto = L.g; b.landX = L.x; b.landY = L.y;
+        b.scol = b.d.liquid; b.salpha = b.d.alpha;
+        if (L.g) addTo(L.g, Math.min(1 - L.g.fill, dt * 0.3 * strength), b.d.liquid, b.d.alpha, DRINKS.map((_, i) => i === b.di ? 1 : 0));
+        splash(L.x, L.y, b.d.liquid, b.d.alpha);
+      }
+      for (const g of glasses) {
+        g.pouring = false; g.drinking = false;
+        // tip a glass to drink: by turning your hand, or (mouse/finger) by lifting it into the upper half of the picture
+        const raised = g.held && g.y < h * 0.5;
+        const wantRot = g.byHand ? g.want : raised ? (g.x > w / 2 ? -1.7 : 1.7) : 0;
+        g.rot += (wantRot - g.rot) * Math.min(1, dt * 6);
+        // a fuller glass spills at a smaller tilt; the liquid runs out over the rim and falls
+        const spillAt = 0.35 + (1 - g.fill) * 1.15;
+        if (g.fill > 0.004 && Math.abs(g.rot) > spillAt) {
+          const strength = clamp((Math.abs(g.rot) - spillAt) / 0.5, 0.3, 1);
+          const out = Math.min(g.fill, dt * 0.5 * strength), shares = g.amounts.map(a => a / g.fill);
+          const m = lipOf(g), L = landing(g, m, Math.sign(g.rot));
+          g.pouring = true; g.drinking = g.y < h * 0.5; anyPour = true;
+          g.mouth = m; g.landX = L.x; g.landY = L.y; g.scol = g.color.slice(); g.salpha = g.alpha;
+          if (L.g) addTo(L.g, Math.min(out, 1 - L.g.fill), g.color, g.alpha, shares);
+          splash(L.x, L.y, g.color, g.alpha);
+          scaleGlass(g, (g.fill - out) / g.fill);
+        }
+        g.fullFor = g.fill >= 0.999 ? g.fullFor + dt : 0;
+        if (demo && g.fullFor > 2.5) scaleGlass(g, Math.max(0, g.fill - dt * 0.6) / g.fill);
+        const beer = g.fill > 0 ? g.amounts[2] / g.fill : 0;
+        if (g.fill > 0.05 && Math.random() < dt * (4 + beer * 16)) g.bubbles.push({ x: Math.random() - 0.5, y: 0, r: gw * (0.02 + Math.random() * 0.025), v: 0.18 + Math.random() * 0.25 });
+        for (const bb of g.bubbles) bb.y += bb.v * dt;
+        g.bubbles = g.bubbles.filter(bb => bb.y < g.fill);
+      }
+      pourSound(anyPour);
+      for (const d of drops) { d.life -= dt; d.x += d.vx * dt; d.y = Math.min(floor, d.y + d.vy * dt); d.vy += unit * 4 * dt; }
+      for (let i = drops.length - 1; i >= 0; i--) if (drops[i].life <= 0) drops.splice(i, 1);
+    }
+
+    function drawBottle(b) {
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot);
+      if (imgReady(b.d.img)) {
+        ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = b.bw * 0.25; ctx.shadowOffsetY = b.bw * 0.06;
+        ctx.drawImage(b.d.img, -b.bw / 2, -b.bh / 2, b.bw, b.bh);
+      } else {
+        ctx.fillStyle = rgbStr(b.d.liquid, 0.85); ctx.fillRect(-b.bw / 2, -b.bh / 2, b.bw, b.bh);
+      }
+      ctx.restore();
+    }
+
+    function drawGlass(g, t) {
+      ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.rot);
+      ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.fill(GP);
+      ctx.save(); ctx.clip(GP);
+      if (g.fill > 0.002) {
+        // the liquid's surface stays level while the glass tips
+        const sy = gh / 2 - BASE - g.fill * DEPTH, tilt = Math.abs(g.rot) < 0.3;
+        ctx.rotate(-g.rot);
+        const syw = sy * Math.max(0.2, Math.cos(g.rot));
+        ctx.fillStyle = rgbStr(g.color, g.alpha); ctx.fillRect(-gh * 1.5, syw, gh * 3, gh * 3);
+        ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(-gh * 1.5, syw, gh * 3, Math.max(1, gh * 0.02));
+        const beer = g.amounts[2] / g.fill;
+        if (beer > 0.25) {   // a foamy head on anything with beer in it
+          const fh = gh * 0.13 * Math.min(1, beer * 1.4) * Math.min(1, g.fill * 3);
+          ctx.fillStyle = 'rgba(255,250,238,.95)';
+          ctx.fillRect(-gh * 1.5, syw - fh * 0.3, gh * 3, fh);
+          for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.arc(-gt + (i + 0.5) * gw / 6, syw - fh * 0.3 + Math.sin(t * 2 + i) * gh * 0.008, gw * 0.1, 0, TAU); ctx.fill(); }
+        }
+        ctx.rotate(g.rot);
+        if (tilt) {
+          ctx.fillStyle = 'rgba(255,255,255,.6)';
+          for (const bb of g.bubbles) { ctx.beginPath(); ctx.arc(bb.x * gw * 0.7, gh / 2 - BASE - bb.y * DEPTH, bb.r, 0, TAU); ctx.fill(); }
+        }
+      }
+      ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.fillRect(-gw, gh / 2 - BASE, gw * 2, BASE);
+      ctx.fillStyle = 'rgba(255,255,255,.32)'; ctx.fillRect(-gt * 0.7, -gh * 0.4, gw * 0.08, gh * 0.72);
+      ctx.restore();
+      ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = gw * 0.12;
+      ctx.lineWidth = Math.max(1.2, gw * 0.035); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.stroke(GP);
+      ctx.restore();
+    }
+
+    // a falling stream from a bottle's mouth or a glass's rim, in that drink's color
+    function drawStream(o, t) {
+      const m = o.mouth, dir = Math.sign(o.rot), col = o.scol, a = Math.max(0.65, o.salpha);
+      ctx.save(); ctx.lineCap = 'round';
+      const path = new Path2D();
+      path.moveTo(m.x, m.y);
+      path.quadraticCurveTo(m.x + dir * unit * 0.08, m.y + (o.landY - m.y) * 0.1, o.landX + Math.sin(t * 40) * unit * 0.006, o.landY);
+      ctx.shadowColor = 'rgba(0,0,0,.3)'; ctx.shadowBlur = unit * 0.02;
+      ctx.strokeStyle = rgbStr(col, a); ctx.lineWidth = Math.max(1.5, unit * (o.kind === 'glass' ? 0.045 : 0.035)); ctx.stroke(path);
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = Math.max(0.8, unit * 0.011); ctx.stroke(path);
+      ctx.restore();
+    }
+    function drawTable() {
+      ctx.save();
+      const g = ctx.createLinearGradient(0, floor, 0, h);
+      g.addColorStop(0, 'rgba(48,30,18,.62)'); g.addColorStop(1, 'rgba(20,12,8,.72)');
+      ctx.fillStyle = g; ctx.fillRect(0, floor, w, h - floor);
+      ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(0, floor, w, Math.max(1, h * 0.004));
+      ctx.restore();
+    }
+    // live view only: a dotted ring on what an open hand would grab, and a tag naming what is held
+    function drawHelpers(c2, inputs) {
+      for (const p of inputs) {
+        const held = holds[p.id];
+        if (!held && p.hand) {
+          const o = pick(p);
+          if (!o) continue;
+          const ow = o.kind === 'bottle' ? o.bw : gw, oh = o.kind === 'bottle' ? o.bh : gh;
+          c2.save(); c2.strokeStyle = 'rgba(240,149,60,.95)'; c2.lineWidth = Math.max(2, w * 0.006);
+          c2.setLineDash([w * 0.012, w * 0.01]);
+          c2.beginPath(); c2.ellipse(o.x, o.y, ow * 0.95, oh * 0.62, 0, 0, TAU); c2.stroke(); c2.restore();
+        } else if (held) {
+          const isB = held.kind === 'bottle';
+          const name = isB ? held.d.name : (mixName(held) || 'EMPTY GLASS');
+          const col = isB ? held.d.liquid : held.fill > 0 ? held.color : [80, 80, 80];
+          const fs = Math.max(11, Math.round(w * 0.022)), y = held.y - (isB ? held.bh : gh) * 0.62 - fs;
+          c2.save(); c2.font = `700 ${fs}px ${BODY}`; c2.textAlign = 'center'; c2.textBaseline = 'middle';
+          const tw = c2.measureText(name).width;
+          c2.fillStyle = rgbStr(col, 0.92); c2.beginPath();
+          if (c2.roundRect) c2.roundRect(held.x - tw / 2 - fs * 0.6, y - fs * 0.75, tw + fs * 1.2, fs * 1.5, fs * 0.75);
+          else c2.rect(held.x - tw / 2 - fs * 0.6, y - fs * 0.75, tw + fs * 1.2, fs * 1.5);
+          c2.fill();
+          c2.fillStyle = (col[0] * 0.299 + col[1] * 0.587 + col[2] * 0.114) > 160 ? '#111111' : '#FFFFFF';
+          c2.fillText(name, held.x, y);
+          c2.restore();
+        }
+      }
+    }
+
+    function drawLabels() {
+      ctx.save();
+      ctx.font = `500 ${Math.max(8, gw * 0.17)}px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.shadowColor = 'rgba(0,0,0,.75)'; ctx.shadowBlur = 4; ctx.fillStyle = '#FFFFFF';
+      for (const g of glasses) {
+        if (g.held) continue;
+        const name = mixName(g);
+        if (name) ctx.fillText(name, g.x, g.y - gh / 2 - gh * 0.1, gw * 2.6);
+      }
+      ctx.restore();
+    }
+
+    function drawCursors(c2, inputs) {
+      for (const p of inputs) {
+        if (!p.pts && !p.down && p.id !== 'demo') continue;
+        if (p.pts) {
+          c2.strokeStyle = 'rgba(255,255,255,.6)'; c2.lineWidth = Math.max(1.5, w * 0.004); c2.beginPath();
+          for (const [a, b] of HAND_LINKS) { c2.moveTo(p.pts[a].x, p.pts[a].y); c2.lineTo(p.pts[b].x, p.pts[b].y); }
+          c2.stroke();
+        }
+        const r = Math.max(7, unit * (p.hand ? 0.12 : 0.09));
+        c2.beginPath(); c2.arc(p.x, p.y, r, 0, TAU);
+        if (p.down) { c2.fillStyle = 'rgba(240,149,60,.6)'; c2.fill(); }
+        c2.lineWidth = Math.max(2, w * 0.005); c2.strokeStyle = '#FFFFFF'; c2.stroke();
+      }
+    }
+
+    // on-screen tips for the live view
+    function tip(inputs) {
+      if (camOn && hands.state === 'ready') {
+        const handIns = inputs.filter(p => p.hand);
+        if (!handIns.length) return 'Show your hand to the camera';
+        const held = handIns.map(p => holds[p.id]).find(Boolean);
+        if (!held) return handIns.some(p => pick(p)) ? 'Make a fist to grab it' : 'Move your hand to a bottle';
+        if (held.kind === 'bottle') return held.pouring ? '' : 'Tilt your hand to pour';
+        if (held.fill <= 0) return 'Fill this glass first';
+        return held.pouring ? '' : 'Lift it to your face and tilt to drink';
+      }
+      return touched ? '' : 'Drag a bottle over a glass to pour';
+    }
+    function drawTip(c2, text) {
+      if (!text) return;
+      const fs = Math.max(13, Math.round(w * 0.03));
+      c2.save();
+      c2.font = `600 ${fs}px ${BODY}`; c2.textAlign = 'center'; c2.textBaseline = 'middle';
+      const tw = c2.measureText(text).width, x = w / 2, y = h * 0.1;
+      c2.fillStyle = 'rgba(0,0,0,.55)';
+      c2.beginPath();
+      if (c2.roundRect) c2.roundRect(x - tw / 2 - fs * 0.9, y - fs * 0.95, tw + fs * 1.8, fs * 1.9, fs * 0.95);
+      else c2.rect(x - tw / 2 - fs * 0.9, y - fs * 0.95, tw + fs * 1.8, fs * 1.9);
+      c2.fill();
+      c2.fillStyle = '#FFFFFF'; c2.fillText(text, x, y);
+      c2.restore();
+    }
+
+    // ---- the self-playing demo shown on the feed pin ----
+    let demoT = 0;
+    function demoInput(dt) {
+      demoT += dt;
+      const cyc = 8, n = Math.floor(demoT / cyc), k = n % 3, u = demoT % cyc;
+      const b = bottles[k], g = glasses[(k + Math.floor(n / 3)) % 3];
+      const home = { x: b.hx, y: b.hy }, rest = { x: w * 0.5, y: h * 0.32 };
+      const pour = { x: g.hx - Math.sin(TILT) * b.bh * 0.5, y: g.hy - gh / 2 + Math.cos(TILT) * b.bh * 0.5 - b.bh * 0.12 };
+      const lerp = (a, c, s) => ({ x: a.x + (c.x - a.x) * ease(clamp(s, 0, 1)), y: a.y + (c.y - a.y) * ease(clamp(s, 0, 1)) });
+      let p, down = false;
+      if (u < 1) p = lerp(rest, home, u);
+      else if (u < 1.3) { p = home; down = true; }
+      else if (u < 2.6) { p = lerp(home, pour, (u - 1.3) / 1.3); down = true; }
+      else if (u < 5.4) { p = { x: pour.x + Math.sin(u * 3) * b.bw * 0.1, y: pour.y }; down = true; }
+      else if (u < 6.6) { p = lerp(pour, home, (u - 5.4) / 1.2); down = true; }
+      else if (u < 6.9) p = home;
+      else p = lerp(home, rest, (u - 6.9) / 1.1);
+      return { id: 'demo', x: p.x, y: p.y, down };
+    }
+
+    let last = null;
+    return {
+      canvas, overlay, interactive: true,
+      step(src, t, inputs) {
+        const dt = last == null ? 0.016 : clamp(t - last, 0, 0.05); last = t;
+        const ins = demo ? [demoInput(dt)] : (inputs || []);
+        handle(ins, t);
+        update(dt);
+        ctx.drawImage(src.canvas, 0, 0);
+        drawTable();
+        for (const g of glasses) if (!g.held) drawGlass(g, t);
+        for (const b of bottles) if (!b.held) drawBottle(b);
+        for (const o of [...bottles, ...glasses]) if (o.pouring) drawStream(o, t);
+        for (const g of glasses) if (g.held) drawGlass(g, t);
+        for (const b of bottles) if (b.held) drawBottle(b);
+        for (const d of drops) { ctx.fillStyle = rgbStr(d.c, d.a); ctx.beginPath(); ctx.arc(d.x, d.y, Math.max(1, unit * 0.016), 0, TAU); ctx.fill(); }
+        drawLabels();
+        if (demo) drawCursors(ctx, ins);
+        else { octx.clearRect(0, 0, w, h); drawHelpers(octx, ins); drawCursors(octx, ins); drawTip(octx, tip(ins)); }
+      },
+      reset() { for (const g of glasses) { g.fill = 0; g.amounts = [0, 0, 0]; g.bubbles = []; g.fullFor = 0; } },
+      dispose() { if (pourSrc) { try { pourSrc.stop(); } catch (e) { /* already stopped */ } } pourSrc = null; pourGain = null; }
+    };
+  }
+
+  // ---------- Hand tracking (MediaPipe), loaded only when a play effect has the live camera ----------
+  const MP_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+  const HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+  const hands = { state: 'off', lm: null, res: null, last: -1, closed: {} };
+  async function loadHands() {
+    if (hands.state !== 'off') return;
+    hands.state = 'loading'; renderHandText();
+    try {
+      const vision = await import(`${MP_BASE}/vision_bundle.mjs`);
+      const files = await vision.FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
+      const create = delegate => vision.HandLandmarker.createFromOptions(files, {
+        baseOptions: { modelAssetPath: HAND_MODEL, delegate }, runningMode: 'VIDEO', numHands: 2
+      });
+      try { hands.lm = await create('GPU'); } catch (e) { hands.lm = await create('CPU'); }
+      hands.state = 'ready';
+      if (view === 'effect' && current && current.interactive) toast('Hand tracking on. Close your hand on a bottle to grab it.');
+    } catch (e) {
+      hands.state = 'failed';
+    }
+    renderHandText();
+  }
+  function renderHandText() {
+    const el = $('handText'), show = !!(current && current.interactive);
+    el.hidden = !show;
+    if (!show) return;
+    el.textContent = !camOn ? 'Drag the bottles with your mouse or finger. With the live camera, you can grab them with your hand.'
+      : hands.state === 'loading' ? 'Loading hand tracking…'
+      : hands.state === 'ready' ? 'Hand tracking on. Close your hand around a bottle to grab it, then tilt your hand to pour.'
+      : hands.state === 'failed' ? 'Hand tracking couldn’t load (it needs an internet connection). Drag with your mouse or finger instead.'
+      : '';
+  }
+  // Each tracked hand becomes an input at the palm. It is "closed" (grabbing) when the
+  // fingers curl into a fist or the thumb and index finger pinch; its angle tilts what it holds.
+  function handInputs() {
+    if (hands.state !== 'ready' || !camOn || video.readyState < 2 || !viewSrc || !viewSrc.crop) return [];
+    const now = performance.now();
+    if (now > hands.last + 1) {
+      hands.last = now;
+      try { hands.res = hands.lm.detectForVideo(video, now); } catch (e) { hands.res = null; }
+    }
+    const res = hands.res, all = (res && res.landmarks) || [];
+    const { sx, sy, sw, sh, vw, vh, mirror } = viewSrc.crop, W = viewSrc.w, H = viewSrc.h;
+    const used = new Set();
+    return all.map((L, i) => {
+      const pts = L.map(p => {
+        let x = (p.x * vw - sx) / sw * W;
+        if (mirror) x = W - x;
+        return { x, y: (p.y * vh - sy) / sh * H };
+      });
+      const side = res.handedness && res.handedness[i] && res.handedness[i][0] ? res.handedness[i][0].categoryName : String(i);
+      let id = 'h' + side;
+      if (used.has(id)) id += i;
+      used.add(id);
+      const size = Math.max(1, dist(pts[0], pts[9]));
+      const palm = [0, 5, 9, 13, 17].reduce((s, j) => ({ x: s.x + pts[j].x / 5, y: s.y + pts[j].y / 5 }), { x: 0, y: 0 });
+      const curl = [8, 12, 16, 20].reduce((s, j) => s + dist(pts[j], palm), 0) / 4 / size;
+      const pinch = dist(pts[4], pts[8]) / size;
+      const was = !!hands.closed[id];
+      // easy to grab: a loose fist or a light pinch counts; you have to clearly open your hand to let go
+      const down = was ? (curl < 1.05 || pinch < 0.55) : (curl < 0.88 || pinch < 0.4);
+      hands.closed[id] = down;
+      const angle = Math.atan2(pts[9].x - pts[0].x, -(pts[9].y - pts[0].y));
+      return { id, x: palm.x, y: palm.y, down, pts, angle, hand: true, curl };
+    });
+  }
+
+  // ar = pin height ÷ width, so the feed gets Pinterest-style varied heights
+  const EFFECTS = [
+    { id: 'inuman', name: 'Inuman', kind: 'play', tag: 'Grab and pour', ar: 1.25, make: makeInuman, interactive: true,
+      hint: 'Close your hand around a bottle to grab it, then tilt your hand to pour into a glass. Mix drinks, then lift a full glass up to your face to drink it.' },
+  ];
+  const KIND = {
+    play: { label: 'Play effect', av: 'PL', bg: '#2E6B4C' }
+  };
+
+  // =====================================================================
+  // Sources: live camera, an uploaded photo, or a drawn sample figure.
+  // Stills sway gently so the motion effects have movement to work with.
+  // =====================================================================
+  const video = $('video');
+  let stream = null, camOn = false, camError = '', facing = 'user', multiCam = false, photo = null;
+  const sample = makeSample();
+
+  function makeSample() {
+    const c = mk(640, 480), x = c.getContext('2d');
+    const bg = x.createLinearGradient(0, 0, 640, 480);
+    bg.addColorStop(0, '#24476B'); bg.addColorStop(1, '#C9744E');
+    x.fillStyle = bg; x.fillRect(0, 0, 640, 480);
+    for (let i = 0; i < 640; i += 32) { x.fillStyle = 'rgba(255,255,255,.07)'; x.fillRect(i, 0, 14, 480); }
+    x.fillStyle = '#E2B13C'; x.beginPath(); x.ellipse(320, 520, 200, 170, 0, 0, Math.PI * 2); x.fill();
+    x.fillStyle = '#B97C5E'; x.fillRect(285, 300, 70, 70);
+    x.strokeStyle = '#E2B13C'; x.lineWidth = 46; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(470, 400); x.lineTo(520, 250); x.stroke();
+    x.fillStyle = '#D69A76'; x.beginPath(); x.arc(526, 220, 40, 0, Math.PI * 2); x.fill();
+    const face = x.createRadialGradient(300, 210, 20, 320, 235, 125);
+    face.addColorStop(0, '#EDB993'); face.addColorStop(1, '#B97C5E');
+    x.fillStyle = face; x.beginPath(); x.ellipse(320, 230, 92, 112, 0, 0, Math.PI * 2); x.fill();
+    x.fillStyle = '#231915'; x.beginPath(); x.ellipse(320, 160, 104, 66, 0, Math.PI, 0); x.fill();
+    x.fillStyle = '#1A1310';
+    x.beginPath(); x.ellipse(287, 228, 10, 13, 0, 0, Math.PI * 2); x.ellipse(353, 228, 10, 13, 0, 0, Math.PI * 2); x.fill();
+    x.strokeStyle = '#6E2E26'; x.lineWidth = 7; x.beginPath(); x.arc(320, 268, 34, 0.2, Math.PI - 0.2); x.stroke();
+    return c;
+  }
+
+  function newSrc(w, h) {
+    const canvas = mk(w, h);
+    return { canvas, ctx: canvas.getContext('2d', { willReadFrequently: true }), w, h, data: null };
+  }
+  function drawSource(src, t) {
+    const { ctx, w, h } = src;
+    if (camOn && video.readyState >= 2 && video.videoWidth) {
+      const vw = video.videoWidth, vh = video.videoHeight;
+      let sw, sh;
+      if (vw / vh > w / h) { sh = vh; sw = vh * w / h; } else { sw = vw; sh = vw * h / w; }
+      ctx.save();
+      if (facing === 'user') { ctx.translate(w, 0); ctx.scale(-1, 1); }
+      ctx.drawImage(video, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, w, h);
+      ctx.restore();
+      src.crop = { sx: (vw - sw) / 2, sy: (vh - sh) / 2, sw, sh, vw, vh, mirror: facing === 'user' };
+    } else {
+      src.crop = null;
+      const img = photo || sample, iw = img.width, ih = img.height, a = reduceMotion ? 0 : 1;
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
+      ctx.save();
+      ctx.translate(w / 2 + Math.sin(t * 0.9) * w * 0.05 * a, h / 2 + Math.sin(t * 0.63 + 1) * h * 0.03 * a);
+      ctx.rotate(Math.sin(t * 0.5) * 0.06 * a);
+      const sc = Math.max(w / iw, h / ih) * 1.14;
+      ctx.drawImage(img, -iw * sc / 2, -ih * sc / 2, iw * sc, ih * sc);
+      ctx.restore();
+    }
+    src.data = ctx.getImageData(0, 0, w, h);
+  }
+
+  async function startCamera(nextFacing) {
+    if (!hasMedia) { camError = 'none'; onSourceChange(); return; }
+    stopCamera();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: nextFacing || 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false
+      });
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+      facing = nextFacing || 'user';
+      camOn = true; camError = '';
+      try { multiCam = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput').length > 1; } catch (e) { multiCam = false; }
+      toast('Camera on.');
+    } catch (e) {
+      camOn = false;
+      camError = e && e.name === 'NotAllowedError' ? 'blocked' : 'none';
+      toast(camError === 'blocked' ? 'Camera access was blocked.' : 'No camera found.');
+    }
+    onSourceChange();
+  }
+  function stopCamera() {
+    if (stream) stream.getTracks().forEach(tr => tr.stop());
+    stream = null; camOn = false; video.srcObject = null;
+  }
+
+  async function loadImage(file) {
+    if (window.createImageBitmap) { try { return await createImageBitmap(file); } catch (e) { /* fall back to <img> */ } }
+    const url = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+    return await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
+  }
+  $('fileIn').addEventListener('change', async e => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    try {
+      const img = await loadImage(f);
+      const iw = img.width || img.naturalWidth, ih = img.height || img.naturalHeight, k = Math.min(1, 1280 / Math.max(iw, ih));
+      const c = mk(Math.round(iw * k), Math.round(ih * k));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      if (img.close) img.close();
+      photo = c;
+      stopCamera(); camError = '';
+      onSourceChange();
+      toast('Using your photo.');
+    } catch (err) {
+      toast('That file couldn’t be opened. Try a JPG or PNG photo.');
+    }
+  });
+
+  function onSourceChange() {
+    let text;
+    if (camOn) text = 'Camera on. Every pin is you, live.';
+    else if (camError === 'blocked') text = 'Camera access was blocked. Allow it from your browser’s address bar, or use a photo.';
+    else if (camError === 'none') text = inViewer ? 'Live camera isn’t available in this preview. Use a photo instead.' : 'No camera found. Use a photo instead.';
+    else if (photo) text = 'Showing your photo, gently swaying so the motion effects have movement to work with.';
+    else text = inViewer ? 'Showing a sample figure. Use a photo to see yourself.' : 'Showing a sample figure. Turn on your camera to see yourself.';
+    $('statusText').textContent = text;
+    $('status').classList.toggle('on', camOn);
+    $('srcText').textContent = text;
+    $('camBtn').hidden = !canCam || camOn;
+    $('pCam').hidden = !canCam || camOn;
+    $('photoBtn').textContent = photo && !camOn ? 'Use another photo' : 'Use a photo';
+    $('photoBtn').className = 'pill ' + (canCam && !camOn ? 'soft' : camOn ? 'soft' : 'accent');
+    $('pPhoto').textContent = $('photoBtn').textContent;
+    $('pFlip').hidden = !(camOn && multiCam);
+    $('resetGlasses').hidden = !(current && current.interactive);
+    if (camOn && current && current.interactive) loadHands();
+    renderHandText();
+  }
+  const openPicker = () => $('fileIn').click();
+  $('camBtn').addEventListener('click', () => { audio(); startCamera('user'); });
+  $('pCam').addEventListener('click', () => { audio(); startCamera('user'); });
+  $('photoBtn').addEventListener('click', openPicker);
+  $('pPhoto').addEventListener('click', openPicker);
+  $('pFlip').addEventListener('click', () => startCamera(facing === 'user' ? 'environment' : 'user'));
+
+  // =====================================================================
+  // Pins and the masonry feed
+  // =====================================================================
+  function pinEl({ ar, media, title, sub, av, onOpen, action }) {
+    const art = document.createElement('article');
+    art.className = 'pin';
+    const m = document.createElement('div');
+    m.className = 'pin-media';
+    m.style.aspectRatio = `1 / ${ar}`;
+    const open = document.createElement('button');
+    open.type = 'button'; open.className = 'pin-open';
+    open.setAttribute('aria-label', `Open ${title}`);
+    open.addEventListener('click', onOpen);
+    m.append(media, open);
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'pin-act' + (action.keep ? ' keep' : '');
+      b.textContent = action.label;
+      b.addEventListener('click', ev => { ev.stopPropagation(); action.fn(); });
+      m.append(b);
+    }
+    const meta = document.createElement('div'); meta.className = 'pin-meta';
+    const t = document.createElement('h3'); t.className = 'pin-title'; t.textContent = title;
+    const s = document.createElement('p'); s.className = 'pin-sub';
+    const a = document.createElement('span'); a.className = 'av'; a.textContent = av.text; a.style.background = av.bg;
+    const st = document.createElement('span'); st.textContent = sub;
+    s.append(a, st);
+    meta.append(t, s);
+    art.append(m, meta);
+    return art;
+  }
+
+  const TILE_W = 200;
+  const tileSrcs = {};
+  const effectPins = EFFECTS.map(e => {
+    const w = TILE_W, h = Math.round(TILE_W * e.ar), key = `${w}x${h}`;
+    if (!tileSrcs[key]) tileSrcs[key] = newSrc(w, h);
+    const fx = e.make(w, h, { demo: true });
+    const el = pinEl({
+      ar: e.ar, media: fx.canvas, title: e.name, sub: `${KIND[e.kind].label} · ${e.tag}`,
+      av: { text: KIND[e.kind].av, bg: KIND[e.kind].bg },
+      onOpen: () => go(e.id), action: { label: 'Try it', fn: () => go(e.id) }
+    });
+    return { type: 'effect', e, fx, key, el, ar: e.ar, text: `${e.name} ${e.tag} ${e.kind} ${e.hint}`.toLowerCase() };
+  });
+
+  const captures = [];
+  let photoCount = 0;
+  let chip = 'all', query = '';
+
+  function layout(container, list) {
+    const W = container.clientWidth;
+    const gap = W < 560 ? 10 : 16, minCol = W < 560 ? 150 : 236;
+    const cols = Math.max(2, Math.min(7, Math.floor((W + gap) / (minCol + gap))));
+    const colEls = [], hs = [];
+    for (let i = 0; i < cols; i++) {
+      const d = document.createElement('div'); d.className = 'mcol'; d.style.gap = gap + 'px';
+      colEls.push(d); hs.push(0);
+    }
+    list.forEach(p => {
+      let k = 0;
+      for (let i = 1; i < cols; i++) if (hs[i] < hs[k] - 0.01) k = i;
+      colEls[k].append(p.el);
+      hs[k] += p.ar + 0.3;
+    });
+    container.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    container.style.columnGap = gap + 'px';
+    container.replaceChildren(...colEls);
+  }
+
+  function interleave(a, b) {
+    const out = [], n = Math.max(a.length, b.length);
+    for (let i = 0; i < n; i++) { if (i < b.length) out.push(b[i]); if (i < a.length) out.push(a[i]); }
+    return out;
+  }
+  function feedList() {
+    let caps = captures.map(c => c.pin), effs = effectPins;
+    if (chip !== 'all' && chip !== 'pins') { effs = effs.filter(p => p.e.kind === chip); caps = []; }
+    else if (chip === 'pins') effs = [];
+    let list = chip === 'all' ? interleave(caps, effs) : [...caps, ...effs];
+    if (query) list = list.filter(p => p.text.includes(query));
+    return list;
+  }
+  function renderFeed() {
+    const list = feedList(), empty = $('feedEmpty');
+    layout($('feed'), list);
+    if (list.length) empty.hidden = true;
+    else {
+      empty.hidden = false;
+      empty.textContent = query ? `No pins match “${$('q').value.trim()}”. Try “motion”, “print” or an effect name.`
+        : 'No pins yet. Open any effect and press Take photo. Your photos and strips show up here.';
+    }
+    document.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.chip === chip)));
+    document.querySelector('.chip[data-chip="pins"]').textContent = captures.length ? `Your pins · ${captures.length}` : 'Your pins';
+    $('navHome').classList.toggle('on', view === 'feed' && chip !== 'pins');
+    $('navPins').classList.toggle('on', view === 'feed' && chip === 'pins');
+  }
+
+  $('chips').addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    chip = b.dataset.chip;
+    try { location.hash = chip === 'pins' ? 'pins' : ''; } catch (err) { /* ignore */ }
+    renderFeed();
+  });
+  $('q').addEventListener('input', () => {
+    query = $('q').value.trim().toLowerCase();
+    if (view !== 'feed') goFeed();
+    else renderFeed();
+  });
+  $('logoBtn').addEventListener('click', () => { chip = 'all'; goFeed(); });
+  $('navHome').addEventListener('click', () => { chip = 'all'; goFeed(); });
+  $('navPins').addEventListener('click', () => { chip = 'pins'; goFeed(); try { location.hash = 'pins'; } catch (e) { /* ignore */ } });
+
+  let resizeTimer = 0;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (view === 'feed') renderFeed(); else renderMore(); }, 120);
+  });
+
+  // =====================================================================
+  // Close-up view
+  // =====================================================================
+  let view = 'feed', current = null, capCurrent = null, backTo = null, feedScroll = 0;
+  let viewFx = null, viewSrc = null, mode = 'photo', busy = false, stripToken = 0, moreItems = [];
+  const media = $('media'), stage = $('stage');
+
+  function viewDims() {
+    const L = 640, immersive = media.classList.contains('immersive');
+    let ar;
+    if (camOn && video.videoWidth) ar = video.videoWidth / video.videoHeight;
+    else if (immersive) ar = innerWidth >= innerHeight ? 4 / 3 : 3 / 4;
+    else ar = innerWidth > 760 ? 4 / 3 : 3 / 4;
+    return ar >= 1 ? [L, Math.round(L / ar)] : [Math.round(L * ar), L];
+  }
+  function buildView() {
+    const [w, h] = viewDims();
+    if (viewFx && viewFx.dispose) viewFx.dispose();
+    viewSrc = newSrc(w, h);
+    viewFx = current.make(w, h, { demo: false });
+    stage.replaceChildren(viewFx.canvas, ...(viewFx.overlay ? [viewFx.overlay] : []));
+    media.style.aspectRatio = `${w} / ${h}`;
+  }
+  function dropView() {
+    if (viewFx && viewFx.dispose) viewFx.dispose();
+    viewFx = null; viewSrc = null;
+    pointer.down = false; pointer.active = false;
+  }
+
+  function showPinView() {
+    if (view === 'feed') feedScroll = window.scrollY;
+    $('feedView').hidden = true;
+    $('pinView').hidden = false;
+    $('navHome').classList.remove('on'); $('navPins').classList.remove('on');
+  }
+
+  function go(id) {
+    const e = EFFECTS.find(x => x.id === id);
+    if (!e) return;
+    openEffect(e);
+    try { if (location.hash !== '#' + id) location.hash = id; } catch (err) { /* hash routing unavailable */ }
+  }
+
+  function openEffect(e) {
+    cancelStrip();
+    showPinView();
+    view = 'effect'; current = e; capCurrent = null;
+    media.className = 'media fx-mode' + (e.interactive ? ' play' : '');
+    $('capImg').hidden = true; stage.hidden = false;
+    $('detTools').hidden = false; $('takeBtn').hidden = false; $('dlBtn').hidden = true;
+    $('fxBlocks').hidden = false; $('capBlocks').hidden = true;
+    $('detKind').textContent = KIND[e.kind].label;
+    $('detTitle').textContent = e.name;
+    $('detDesc').textContent = e.hint;
+    $('mediaBack').setAttribute('aria-label', 'Back');
+    buildView();
+    renderMine();
+    renderMore();
+    onSourceChange();
+    window.scrollTo(0, 0);
+  }
+
+  function openCapture(c) {
+    cancelStrip();
+    exitImmersive();
+    backTo = view === 'effect' && current ? current : backTo && view === 'capture' ? backTo : null;
+    showPinView();
+    view = 'capture'; capCurrent = c; dropView();
+    stage.replaceChildren();
+    media.className = 'media cap-mode';
+    media.style.aspectRatio = `${c.canvas.width} / ${c.canvas.height}`;
+    const img = $('capImg');
+    img.src = c.url; img.alt = `${c.label}, made with ${c.effect.name}`; img.hidden = false;
+    stage.hidden = true;
+    $('detTools').hidden = true; $('takeBtn').hidden = true; $('dlBtn').hidden = false;
+    $('fxBlocks').hidden = true; $('capBlocks').hidden = false;
+    askDelete(false);
+    $('detKind').textContent = c.kind === 'strip' ? 'Your strip' : 'Your photo';
+    $('detTitle').textContent = c.label;
+    $('detDesc').textContent = `Made with ${c.effect.name} · ${fmtWhen(c.at)}`;
+    $('tryBtn').textContent = `Try ${c.effect.name}`;
+    renderMore();
+    window.scrollTo(0, 0);
+  }
+
+  function goFeed() {
+    cancelStrip();
+    exitImmersive();
+    const wasFeed = view === 'feed';
+    view = 'feed'; current = null; capCurrent = null; backTo = null; dropView();
+    stage.replaceChildren();
+    $('pinView').hidden = true;
+    $('feedView').hidden = false;
+    renderFeed();
+    if (!wasFeed) window.scrollTo(0, feedScroll);
+    try {
+      const want = chip === 'pins' ? '#pins' : '';
+      if (location.hash !== want && !(want === '' && location.hash === '#')) location.hash = want;
+    } catch (e) { /* ignore */ }
+  }
+
+  function goBack() {
+    if (view === 'capture' && backTo) {
+      const e = backTo; backTo = null;
+      openEffect(e);
+      try { if (location.hash !== '#' + e.id) location.hash = e.id; } catch (err) { /* ignore */ }
+      return;
+    }
+    goFeed();
+  }
+
+  function route() {
+    const h = location.hash.slice(1);
+    if (h === 'pins') { chip = 'pins'; if (view !== 'feed') goFeed(); else renderFeed(); return; }
+    const e = EFFECTS.find(x => x.id === h);
+    if (e) { if (!(view === 'effect' && current === e)) openEffect(e); return; }
+    if (view === 'effect') goFeed();
+  }
+  window.addEventListener('hashchange', route);
+
+  $('mediaBack').addEventListener('click', () => { if (media.classList.contains('immersive')) exitImmersive(); else goBack(); });
+  $('tryBtn').addEventListener('click', () => { if (capCurrent) { backTo = null; go(capCurrent.effect.id); } });
+  $('dlBtn').addEventListener('click', () => { if (capCurrent) saveCapture(capCurrent); });
+
+  function enterImmersive() {
+    media.classList.add('immersive');
+    document.documentElement.classList.add('locked');
+    $('mediaBack').setAttribute('aria-label', 'Exit full screen');
+    $('mediaBack').innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+    $('shutter').focus({ preventScroll: true });
+  }
+  function exitImmersive() {
+    if (!media.classList.contains('immersive')) return;
+    media.classList.remove('immersive');
+    document.documentElement.classList.remove('locked');
+    $('mediaBack').setAttribute('aria-label', 'Back');
+    $('mediaBack').innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg>';
+  }
+  $('fullBtn').addEventListener('click', enterImmersive);
+
+  function renderMine() {
+    const box = $('mine'), mine = captures.filter(c => c.effect === current);
+    box.replaceChildren(...mine.map(c => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('aria-label', `Open ${c.label}`);
+      const img = document.createElement('img'); img.src = c.url; img.alt = '';
+      b.append(img);
+      b.addEventListener('click', () => openCapture(c));
+      return b;
+    }));
+    $('mineEmpty').hidden = mine.length > 0;
+    $('mineLabel').textContent = mine.length ? `Your pins from this effect · ${mine.length}` : 'Your pins from this effect';
+  }
+
+  function snapshotPin(p) {
+    const img = document.createElement('img');
+    img.alt = '';
+    try { img.src = p.fx.canvas.toDataURL('image/jpeg', 0.85); } catch (e) { /* leave blank */ }
+    return pinEl({
+      ar: p.ar, media: img, title: p.e.name, sub: `${KIND[p.e.kind].label} · ${p.e.tag}`,
+      av: { text: KIND[p.e.kind].av, bg: KIND[p.e.kind].bg },
+      onOpen: () => go(p.e.id), action: { label: 'Try it', fn: () => go(p.e.id) }
+    });
+  }
+  function capturePinEl(c) {
+    const img = document.createElement('img');
+    img.src = c.url; img.alt = '';
+    return pinEl({
+      ar: c.canvas.height / c.canvas.width, media: img, title: c.label, sub: `You · ${c.effect.name}`,
+      av: { text: 'YOU', bg: '#3D3D3A' },
+      onOpen: () => openCapture(c), action: { label: 'Download', keep: true, fn: () => saveCapture(c) }
+    });
+  }
+  function renderMore() {
+    if (view === 'feed') return;
+    let items;
+    if (view === 'effect') {
+      const others = effectPins.filter(p => p.e !== current);
+      const same = others.filter(p => p.e.kind === current.kind), diff = others.filter(p => p.e.kind !== current.kind);
+      items = [...same, ...diff].map(p => ({ el: snapshotPin(p), ar: p.ar }));
+      $('moreTitle').textContent = 'More like this';
+    } else {
+      const caps = captures.filter(c => c !== capCurrent).map(c => ({ el: capturePinEl(c), ar: c.canvas.height / c.canvas.width }));
+      const effs = effectPins.map(p => ({ el: snapshotPin(p), ar: p.ar }));
+      items = [...caps, ...effs];
+      $('moreTitle').textContent = caps.length ? 'More of your pins' : 'Keep playing';
+    }
+    moreItems = items;
+    document.querySelector('.more').hidden = items.length === 0;
+    layout($('more'), items);
+  }
+
+  // ---------- Pointer input for play effects (mouse, finger, pen) ----------
+  const pointer = { active: false, down: false, x: 0, y: 0 };
+  function toCanvas(e) {
+    const c = viewFx && viewFx.canvas;
+    if (!c) return null;
+    const r = c.getBoundingClientRect(), cover = media.classList.contains('immersive');
+    const s = cover ? Math.max(r.width / c.width, r.height / c.height) : Math.min(r.width / c.width, r.height / c.height);
+    return { x: (e.clientX - r.left - (r.width - c.width * s) / 2) / s, y: (e.clientY - r.top - (r.height - c.height * s) / 2) / s };
+  }
+  media.addEventListener('pointerdown', e => {
+    if (view !== 'effect' || !current || !current.interactive || e.target.closest('button')) return;
+    const p = toCanvas(e);
+    if (!p) return;
+    Object.assign(pointer, { active: true, down: true, x: p.x, y: p.y });
+    try { media.setPointerCapture(e.pointerId); } catch (err) { /* capture unavailable */ }
+    e.preventDefault();
+    audio();
+  });
+  media.addEventListener('pointermove', e => {
+    if (!pointer.active) return;
+    const p = toCanvas(e);
+    if (p) { pointer.x = p.x; pointer.y = p.y; }
+  });
+  const pointerUp = () => { pointer.down = false; pointer.active = false; };
+  media.addEventListener('pointerup', pointerUp);
+  media.addEventListener('pointercancel', pointerUp);
+  function gatherInputs() {
+    const list = handInputs();
+    if (pointer.active) list.push({ id: 'p', x: pointer.x, y: pointer.y, down: pointer.down });
+    return list;
+  }
+  $('resetGlasses').addEventListener('click', () => { if (viewFx && viewFx.reset) { viewFx.reset(); toast('Fresh glasses.'); } });
+
+  // ---------- Modes ----------
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+    $('shutter').classList.toggle('strip', m === 'strip');
+    $('shutter').setAttribute('aria-label', m === 'strip' ? 'Shoot a strip of four' : 'Take a photo');
+    $('takeBtn').textContent = m === 'strip' ? 'Shoot strip' : 'Take photo';
+    $('modeText').textContent = m === 'strip' ? 'Four photos with a 3-2-1 countdown before each, printed as a strip.' : 'One shot each time you press Take photo.';
+  }
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => { if (!busy) setMode(b.dataset.mode); }));
+
+  // ---------- Sound ----------
+  let actx = null, soundOn = store('silverbooth.sound') !== 'off';
+  function audio() {
+    if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } }
+    if (actx && actx.state === 'suspended') actx.resume().catch(() => {});
+    return actx;
+  }
+  function beep(freq) {
+    if (!soundOn) return; const a = audio(); if (!a) return;
+    const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+    o.type = 'square'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.12);
+  }
+  function shutterSound() {
+    if (!soundOn) return; const a = audio(); if (!a) return;
+    const t = a.currentTime, len = Math.floor(a.sampleRate * 0.16), buf = a.createBuffer(1, len, a.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (i < len * 0.3 ? 1 : 0.45);
+    const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    s.buffer = buf; f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 0.8;
+    g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    s.connect(f).connect(g).connect(a.destination); s.start(t);
+  }
+  function renderSound() {
+    $('soundBtn').setAttribute('aria-pressed', String(soundOn));
+    $('soundBtn').title = soundOn ? 'Sound on' : 'Sound off';
+    $('soundWave').style.display = soundOn ? '' : 'none';
+  }
+  $('soundBtn').addEventListener('click', () => {
+    soundOn = !soundOn; store('silverbooth.sound', soundOn ? 'on' : 'off'); renderSound();
+    if (soundOn) beep(880);
+    toast(soundOn ? 'Sound on.' : 'Sound off.');
+  });
+
+  // ---------- Capture ----------
+  const countEl = $('count'), flashEl = $('flash'), lampEls = [...document.querySelectorAll('#lamps i')];
+  let toastTimer = 0;
+  function toast(t) {
+    const el = $('toast'); el.textContent = t; el.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+  }
+  function tick(n) { countEl.textContent = n; countEl.classList.remove('tick'); void countEl.offsetWidth; countEl.classList.add('tick'); }
+  function flash() { flashEl.classList.remove('go'); void flashEl.offsetWidth; flashEl.classList.add('go'); }
+  function snapshot() { const c = mk(viewFx.canvas.width, viewFx.canvas.height); c.getContext('2d').drawImage(viewFx.canvas, 0, 0); return c; }
+  function setBusy(on) {
+    busy = on;
+    $('shutter').disabled = on; $('takeBtn').disabled = on;
+    document.querySelectorAll('[data-mode]').forEach(b => b.disabled = on);
+    if (!on) { $('lamps').hidden = true; lampEls.forEach(l => l.className = ''); countEl.textContent = ''; }
+  }
+  function cancelStrip() { stripToken++; if (busy) setBusy(false); }
+
+  async function take() {
+    if (busy || view !== 'effect' || !viewFx) return;
+    audio();
+    if (mode === 'photo') {
+      const c = snapshot(); shutterSound(); flash();
+      addCapture('photo', c, current);
+      toast(`Pinned to Your pins (${captures.length}).`);
+      return;
+    }
+    setBusy(true);
+    const token = ++stripToken, e = current, frames = [];
+    $('lamps').hidden = false;
+    for (let i = 0; i < 4; i++) {
+      lampEls[i].className = 'now';
+      for (let n = 3; n > 0; n--) {
+        tick(n); beep(n === 1 ? 1175 : 880);
+        await wait(800);
+        if (token !== stripToken) return;
+      }
+      countEl.textContent = '';
+      frames.push(snapshot()); shutterSound(); flash();
+      lampEls[i].className = 'on';
+      await wait(i < 3 ? 650 : 350);
+      if (token !== stripToken) return;
+    }
+    setBusy(false);
+    const c = addCapture('strip', renderStrip(frames, e), e);
+    toast('Strip pinned to Your pins.');
+    openCapture(c);
+  }
+  $('shutter').addEventListener('click', take);
+  $('takeBtn').addEventListener('click', take);
+
+  // ---------- Strip ----------
+  let stripNo = parseInt(store('silverbooth.count') || '0', 10) || 0;
+  function coverDraw(ctx, img, dx, dy, dw, dh) {
+    const iw = img.width, ih = img.height;
+    let sw, sh;
+    if (iw / ih > dw / dh) { sh = ih; sw = ih * dw / dh; } else { sw = iw; sh = iw * dh / dw; }
+    ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, dx, dy, dw, dh);
+  }
+  function renderStrip(frames, e) {
+    const FW = 480, FH = 360, PAD = 28, GAP = 18, FOOT = 126;
+    const SW = FW + PAD * 2, SH = PAD + FH * 4 + GAP * 3 + FOOT;
+    const c = mk(SW, SH), x = c.getContext('2d');
+    x.fillStyle = '#F6F6F3'; x.fillRect(0, 0, SW, SH);
+    frames.forEach((f, i) => coverDraw(x, f, PAD, PAD + i * (FH + GAP), FW, FH));
+    stripNo++; store('silverbooth.count', String(stripNo));
+    const no = String(stripNo).padStart(4, '0'), d = new Date(), fy = PAD + FH * 4 + GAP * 3;
+    x.fillStyle = '#151517'; x.textBaseline = 'alphabetic';
+    x.textAlign = 'left'; x.font = `800 54px ${DISPLAY}`; x.fillText('SILVER BOOTH', PAD, fy + 66);
+    x.textAlign = 'right'; x.font = `500 22px ${MONO}`; x.fillText(`No. ${no}`, SW - PAD, fy + 64);
+    x.fillStyle = 'rgba(21,21,23,.66)'; x.font = `500 17px ${MONO}`;
+    x.textAlign = 'left'; x.fillText(`${p2(d.getDate())} ${MON[d.getMonth()]} ${d.getFullYear()}  ${p2(d.getHours())}:${p2(d.getMinutes())}`, PAD, fy + 98);
+    x.textAlign = 'right'; x.fillText(e.name.toUpperCase(), SW - PAD, fy + 98);
+    c.stripNo = no;
+    return c;
+  }
+
+  // ---------- Your pins ----------
+  function addCapture(kind, canvas, e) {
+    const c = { kind, canvas, effect: e, at: new Date(), url: canvas.toDataURL('image/jpeg', 0.9) };
+    if (kind === 'strip') { c.label = `Strip No. ${canvas.stripNo}`; c.file = `silver-booth-strip-${canvas.stripNo}.png`; }
+    else { photoCount++; c.label = `Photo ${photoCount}`; c.file = `silver-booth-${e.id}-${p2(photoCount)}.png`; }
+    c.pin = { type: 'capture', c, el: capturePinEl(c), ar: canvas.height / canvas.width, text: `${c.label} ${e.name} ${kind} your pins you`.toLowerCase() };
+    captures.unshift(c);
+    renderMine();
+    return c;
+  }
+
+  function askDelete(on) {
+    $('delBtn').hidden = on; $('delAsk').hidden = !on; $('delYes').hidden = !on; $('delNo').hidden = !on;
+  }
+  $('delBtn').addEventListener('click', () => askDelete(true));
+  $('delNo').addEventListener('click', () => askDelete(false));
+  $('delYes').addEventListener('click', () => {
+    const i = captures.indexOf(capCurrent);
+    if (i >= 0) captures.splice(i, 1);
+    toast('Pin deleted.');
+    goBack();
+  });
+
+  const CANT_SAVE = 'Downloading isn’t available here. Press and hold (or right-click) the image to save it.';
+  async function saveCapture(c) {
+    const blob = await new Promise(r => c.canvas.toBlob(r, 'image/png'));
+    if (!blob) { toast('That image couldn’t be prepared. Try again.'); return; }
+    if (inViewer) {
+      const dl = await downloadsP;
+      if (!dl) { toast(CANT_SAVE); return; }
+      try { await dl.save({ filename: c.file, data: blob }); toast(`Saved ${c.file}.`); }
+      catch (e) {
+        const code = e && e.code;
+        toast(code === 'declined' ? 'Download cancelled.' : code === 'rate_limited' ? 'A download is already waiting for your answer.' : CANT_SAVE);
+      }
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = c.file;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast(`Saved ${c.file} to your downloads.`);
+    }
+  }
+
+  // ---------- Keyboard ----------
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (media.classList.contains('immersive')) exitImmersive();
+      else if (view !== 'feed') goBack();
+    } else if ((e.code === 'Space' || e.key === ' ') && view === 'effect') {
+      const tag = e.target && e.target.tagName;
+      if (tag !== 'BUTTON' && tag !== 'INPUT') { e.preventDefault(); take(); }
+    }
+  });
+
+  // =====================================================================
+  // Main loop: the close-up effect when one is open, otherwise every pin in the feed.
+  // =====================================================================
+  let lastTileAt = 0, stillFrames = 0;
+  function stepTiles(t) {
+    for (const k in tileSrcs) drawSource(tileSrcs[k], t);
+    for (const p of effectPins) if (p.el.isConnected) p.fx.step(tileSrcs[p.key], t);
+  }
+  function loop(ts) {
+    requestAnimationFrame(loop);
+    if (document.hidden) return;
+    const t = ts / 1000;
+    if (view === 'effect' && viewFx) {
+      const [w, h] = viewDims();
+      if (w !== viewSrc.w || h !== viewSrc.h) buildView();
+      drawSource(viewSrc, t);
+      viewFx.step(viewSrc, t, viewFx.interactive ? gatherInputs() : undefined);
+      return;
+    }
+    if (view !== 'feed') return;
+    if (ts - lastTileAt < 50) return;   // feed pins refresh about 20 times a second
+    if (reduceMotion && !camOn && stillFrames > 45) return;
+    lastTileAt = ts;
+    stillFrames = camOn ? 0 : stillFrames + 1;
+    stepTiles(t);
+  }
+
+  // ---------- Light / dark ----------
+  let dark = document.documentElement.getAttribute('data-look') === 'dark';
+  function renderLook() {
+    document.documentElement.setAttribute('data-look', dark ? 'dark' : 'light');
+    $('lookBtn').setAttribute('aria-pressed', String(dark));
+    $('lookBtn').title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+    $('moonIcon').toggleAttribute('hidden', dark);
+    $('sunIcon').toggleAttribute('hidden', !dark);
+  }
+  $('lookBtn').addEventListener('click', () => {
+    dark = !dark;
+    store('silverbooth.look', dark ? 'dark' : 'light');
+    renderLook();
+  });
+
+  // ---------- Start ----------
+  renderLook();
+  renderSound();
+  setMode('photo');
+  onSourceChange();
+  renderFeed();
+  for (let i = 0; i < 24; i++) {   // warm up so every pin has a picture before the first paint
+    const t = i / 20;
+    for (const k in tileSrcs) drawSource(tileSrcs[k], t);
+    for (const p of effectPins) p.fx.step(tileSrcs[p.key], t);
+  }
+  route();
+  requestAnimationFrame(loop);
+})();
+</script>
+
+</body>
+</html>
