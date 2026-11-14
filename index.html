@@ -353,6 +353,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
     <div class="help-row">
       <button class="box" id="soundBtn" type="button">Sound: ON</button>
       <button class="box" id="resetBtn" type="button">Fresh glasses</button>
+      <button class="box" id="soberBtn" type="button">Sober up</button>
     </div>
   </div>
   <div class="bottom-left">
@@ -439,10 +440,10 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   // Close your hand on one to grab it (it follows your hand), tilt your hand to pour.
   // =====================================================================
   const DRINKS = [
-    // each drink pours its own color: blue gin, crystal-white vodka, amber beer
-    { name: 'GIN',   src: 'bottles/gin.png',   ar: 109 / 440, liquid: [70, 145, 235],  alpha: 0.72, size: 1.0 },
-    { name: 'VODKA', src: 'bottles/vodka.png', ar: 151 / 440, liquid: [238, 243, 250], alpha: 0.7,  size: 0.92 },
-    { name: 'BEER',  src: 'bottles/beer.png',  ar: 122 / 440, liquid: [222, 140, 24],  alpha: 0.92, size: 0.84, foam: true }
+    // each drink pours its own color; strength is how much one glass counts toward getting drunk (beer = 1)
+    { name: 'SOJU',    src: 'bottles/soju.png',    ar: 131 / 440, liquid: [214, 240, 222], alpha: 0.72, size: 1.0,  strength: 2.5 },
+    { name: 'MODELO',  src: 'bottles/modelo.png',  ar: 166 / 440, liquid: [238, 182, 52],  alpha: 0.88, size: 0.98, strength: 1, foam: true },
+    { name: 'SAPPORO', src: 'bottles/sapporo.png', ar: 224 / 440, liquid: [226, 160, 34],  alpha: 0.9,  size: 0.62, strength: 1, foam: true }
   ];
   DRINKS.forEach(d => { d.img = new Image(); d.img.src = d.src; });
   const imgReady = im => im.complete && im.naturalWidth > 0;
@@ -487,6 +488,18 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
     });
     const drops = [];
     let touched = false;
+    // drinking and getting drunk
+    let face = null, units = 0, nowT = 0, gulpT = -9, hicT = -9, nextHic = 0;
+    const tmp = demo ? null : mk(w, h);
+    const foamShare = g => g.fill > 0 ? g.amounts.reduce((s, a, i) => s + (DRINKS[i].foam ? a : 0), 0) / g.fill : 0;
+    const drunkness = () => clamp((units - 1.5) / 2.5, 0, 1);   // tipsy at two beers, drunk at three, wasted at four
+    const nearMouth = p => !!(face && dist(p, face.mouth) < face.size * 0.45);
+    function drink(amount, shares) {
+      let s = 0;
+      for (let i = 0; i < DRINKS.length; i++) s += shares[i] * DRINKS[i].strength;
+      units += amount * s;
+      if (!demo && soundOn && nowT - gulpT > 0.38) { gulpT = nowT; gulp(); }
+    }
 
     // ---- input: grab (fist, pinch or press), carry, let go ----
     const prevDown = {}, holds = {}, lastSeen = {};
@@ -601,6 +614,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 
     function update(dt) {
       const k = Math.min(1, dt * 16), back = Math.min(1, dt * 7);
+      if (!demo) units = Math.max(0, units - dt * 0.012);   // slowly sober up
       for (const o of [...bottles, ...glasses]) {
         if (o.held) { o.x += (o.tx - o.x) * k; o.y += (o.ty - o.y) * k; }
         else { o.x += (o.hx - o.x) * back; o.y += (o.hy - o.y) * back; }
@@ -619,36 +633,56 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
           b.want = target ? TILT : b.y < b.hy - b.bh * 0.2 ? 0.18 : 0;
         }
         b.rot += (b.want - b.rot) * Math.min(1, dt * 8);
-        if (Math.abs(b.rot) < POUR_AT) continue;
+        b.drinking = false;
+        // drinking straight from the bottle: its mouth is at your mouth, so it needs less tilt and goes into you
+        const m = mouthOf(b), atMouth = !!(b.held && nearMouth(m)), startAt = atMouth ? 0.85 : POUR_AT;
+        if (Math.abs(b.rot) < startAt) continue;
+        const strength = clamp((Math.abs(b.rot) - startAt) / 0.6, 0.35, 1);
+        b.pouring = true; anyPour = true; b.mouth = m; b.scol = b.d.liquid; b.salpha = b.d.alpha;
+        if (atMouth) {
+          b.drinking = true; b.pourInto = null; b.landX = face.mouth.x; b.landY = face.mouth.y;
+          drink(dt * 0.3 * strength, DRINKS.map((_, i) => i === b.di ? 1 : 0));
+          continue;
+        }
         // pouring: the stream falls from the mouth into whatever glass is underneath, or onto the table
-        const m = mouthOf(b), strength = clamp((Math.abs(b.rot) - POUR_AT) / 0.6, 0.35, 1);
         const L = landing(b, m, Math.sign(b.rot));
-        b.pouring = true; anyPour = true; b.mouth = m; b.pourInto = L.g; b.landX = L.x; b.landY = L.y;
-        b.scol = b.d.liquid; b.salpha = b.d.alpha;
+        b.pourInto = L.g; b.landX = L.x; b.landY = L.y;
         if (L.g) addTo(L.g, Math.min(1 - L.g.fill, dt * 0.3 * strength), b.d.liquid, b.d.alpha, DRINKS.map((_, i) => i === b.di ? 1 : 0));
         splash(L.x, L.y, b.d.liquid, b.d.alpha);
       }
       for (const g of glasses) {
         g.pouring = false; g.drinking = false;
-        // tip a glass to drink: by turning your hand, or (mouse/finger) by lifting it into the upper half of the picture
-        const raised = g.held && g.y < h * 0.5;
-        const wantRot = g.byHand ? g.want : raised ? (g.x > w / 2 ? -1.7 : 1.7) : 0;
+        // tip a glass to drink by turning your hand. With a mouse or finger it tips by itself:
+        // at your mouth when your face is tracked, otherwise when lifted into the upper half of the picture.
+        // "at your mouth" means the glass itself is up against your mouth, so nothing spills on the way in
+        const atMouth = !!(g.held && face && dist(g, face.mouth) < face.size * 0.9);
+        const autoTip = g.held && (face ? atMouth : g.y < h * 0.5);
+        const towardMouth = face ? (face.mouth.x < g.x ? -1.7 : 1.7) : (g.x > w / 2 ? -1.7 : 1.7);
+        const wantRot = g.byHand ? g.want : autoTip ? towardMouth : 0;
         g.rot += (wantRot - g.rot) * Math.min(1, dt * 6);
-        // a fuller glass spills at a smaller tilt; the liquid runs out over the rim and falls
-        const spillAt = 0.35 + (1 - g.fill) * 1.15;
+        // a fuller glass spills at a smaller tilt. At your mouth the drink goes in; anywhere else it runs over the rim and falls.
+        const lip = lipOf(g);
+        const spillAt = 0.35 + (1 - g.fill) * 1.15 - (atMouth ? 0.35 : 0);
         if (g.fill > 0.004 && Math.abs(g.rot) > spillAt) {
           const strength = clamp((Math.abs(g.rot) - spillAt) / 0.5, 0.3, 1);
-          const out = Math.min(g.fill, dt * 0.5 * strength), shares = g.amounts.map(a => a / g.fill);
-          const m = lipOf(g), L = landing(g, m, Math.sign(g.rot));
-          g.pouring = true; g.drinking = g.y < h * 0.5; anyPour = true;
-          g.mouth = m; g.landX = L.x; g.landY = L.y; g.scol = g.color.slice(); g.salpha = g.alpha;
-          if (L.g) addTo(L.g, Math.min(out, 1 - L.g.fill), g.color, g.alpha, shares);
-          splash(L.x, L.y, g.color, g.alpha);
+          // sipping at your mouth is slower than pouring out: about three seconds for a full glass
+          const out = Math.min(g.fill, dt * (atMouth ? 0.32 : 0.5) * strength), shares = g.amounts.map(a => a / g.fill);
+          g.pouring = true; anyPour = true;
+          g.mouth = lip; g.scol = g.color.slice(); g.salpha = g.alpha;
+          if (atMouth) {
+            g.drinking = true; g.landX = face.mouth.x; g.landY = face.mouth.y;
+            drink(out, shares);
+          } else {
+            const L = landing(g, lip, Math.sign(g.rot));
+            g.landX = L.x; g.landY = L.y;
+            if (L.g) addTo(L.g, Math.min(out, 1 - L.g.fill), g.color, g.alpha, shares);
+            splash(L.x, L.y, g.color, g.alpha);
+          }
           scaleGlass(g, (g.fill - out) / g.fill);
         }
         g.fullFor = g.fill >= 0.999 ? g.fullFor + dt : 0;
         if (demo && g.fullFor > 2.5) scaleGlass(g, Math.max(0, g.fill - dt * 0.6) / g.fill);
-        const beer = g.fill > 0 ? g.amounts[2] / g.fill : 0;
+        const beer = foamShare(g);
         if (g.fill > 0.05 && Math.random() < dt * (4 + beer * 16)) g.bubbles.push({ x: Math.random() - 0.5, y: 0, r: gw * (0.02 + Math.random() * 0.025), v: 0.18 + Math.random() * 0.25 });
         for (const bb of g.bubbles) bb.y += bb.v * dt;
         g.bubbles = g.bubbles.filter(bb => bb.y < g.fill);
@@ -680,7 +714,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
         const syw = sy * Math.max(0.2, Math.cos(g.rot));
         ctx.fillStyle = rgbStr(g.color, g.alpha); ctx.fillRect(-gh * 1.5, syw, gh * 3, gh * 3);
         ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(-gh * 1.5, syw, gh * 3, Math.max(1, gh * 0.02));
-        const beer = g.amounts[2] / g.fill;
+        const beer = foamShare(g);
         if (beer > 0.25) {   // a foamy head on anything with beer in it
           const fh = gh * 0.13 * Math.min(1, beer * 1.4) * Math.min(1, g.fill * 3);
           ctx.fillStyle = 'rgba(255,250,238,.95)';
@@ -785,9 +819,9 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
         if (!handIns.length) return 'Show your hand to the camera';
         const held = handIns.map(p => holds[p.id]).find(Boolean);
         if (!held) return handIns.some(p => pick(p)) ? 'Make a fist to grab it' : 'Move your hand to a bottle';
-        if (held.kind === 'bottle') return held.pouring ? '' : 'Tilt your hand to pour';
+        if (held.kind === 'bottle') return held.pouring ? '' : face ? 'Tilt to pour, or drink from the bottle' : 'Tilt your hand to pour';
         if (held.fill <= 0) return 'Fill this glass first';
-        return held.pouring ? '' : 'Lift it to your face and tilt to drink';
+        return held.pouring ? '' : face ? 'Bring it to your mouth and tilt to drink' : 'Tilt your hand to pour it out';
       }
       return touched ? '' : 'Drag a bottle over a glass to pour';
     }
@@ -826,15 +860,79 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
       return { id: 'demo', x: p.x, y: p.y, down };
     }
 
+    // ---- getting drunk: red cheeks first, then sway, double vision, blur and hiccups ----
+    function drawBlush() {
+      const b = clamp((units - 0.5) / 2, 0, 1);
+      if (!face || b <= 0.02) return;
+      for (const c of face.cheeks) {
+        const r = face.size * 0.2, g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r);
+        g.addColorStop(0, `rgba(255,70,90,${0.45 * b})`); g.addColorStop(1, 'rgba(255,70,90,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, TAU); ctx.fill();
+      }
+    }
+    function postDrunk(t) {
+      const I = drunkness();
+      if (I > 0.35 && t > nextHic) {
+        if (nextHic > 0) { hicT = t; if (soundOn) hicSound(); }
+        nextHic = t + 5 + Math.random() * 6;
+      }
+      const hu = (t - hicT) / 0.3, jolt = hu >= 0 && hu < 1 ? -h * 0.03 * Math.sin(Math.PI * hu) : 0;
+      if (I > 0.01 || jolt) {
+        const tc = tmp.getContext('2d');
+        tc.clearRect(0, 0, w, h); tc.drawImage(canvas, 0, 0);
+        ctx.save();
+        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
+        ctx.translate(w / 2 + Math.sin(t * 0.7) * w * 0.02 * I, h / 2 + Math.cos(t * 0.8) * h * 0.012 * I + jolt);
+        ctx.rotate((Math.sin(t * 0.9) * 0.035 + Math.sin(t * 2.3) * 0.01) * I);
+        ctx.scale(1 + 0.07 * I, 1 + 0.07 * I);
+        if ('filter' in ctx && I > 0.2) ctx.filter = `blur(${(I * 1.6).toFixed(2)}px)`;
+        ctx.drawImage(tmp, -w / 2, -h / 2);
+        ctx.filter = 'none';
+        ctx.globalAlpha = 0.38 * I;   // double vision
+        ctx.drawImage(tmp, -w / 2 + w * 0.03 * I * (0.6 + 0.4 * Math.sin(t * 1.7)), -h / 2 + h * 0.008 * I);
+        ctx.restore();
+        const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.75);
+        v.addColorStop(0, 'rgba(90,10,20,0)'); v.addColorStop(1, `rgba(90,10,20,${0.5 * I})`);
+        ctx.fillStyle = v; ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = `rgba(255,120,80,${0.07 * I})`; ctx.fillRect(0, 0, w, h);
+      }
+      const hs = t - hicT;
+      if (hs >= 0 && hs < 0.9) {
+        const at = face ? face.mouth : { x: w * 0.5, y: h * 0.4 }, fs = Math.max(16, w * 0.055);
+        ctx.save();
+        ctx.globalAlpha = 1 - hs / 0.9;
+        ctx.font = `800 ${fs}px ${BODY}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.lineWidth = fs * 0.14; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.fillStyle = '#FFFFFF';
+        const x = at.x + fs * 0.8, y = at.y - fs * 0.6 - hs * h * 0.08;
+        ctx.strokeText('hic!', x, y); ctx.fillText('hic!', x, y);
+        ctx.restore();
+      }
+    }
+    function drawMeter(c2) {
+      if (units < 0.05) return;
+      const I = drunkness();
+      const level = units < 1 ? 'SOBER' : units < 1.5 ? 'BUZZED' : I < 0.4 ? 'TIPSY' : I < 0.8 ? 'DRUNK' : 'WASTED';
+      const text = `${units.toFixed(1)} DRINKS · ${level}`, fs = Math.max(11, Math.round(w * 0.022));
+      c2.save();
+      c2.font = `700 ${fs}px ${BODY}`; c2.textAlign = 'left'; c2.textBaseline = 'middle';
+      const tw = c2.measureText(text).width, x = w * 0.03, y = h * 0.19;
+      c2.fillStyle = I > 0.45 ? 'rgba(170,30,40,.85)' : 'rgba(0,0,0,.55)';
+      c2.fillRect(x, y - fs, tw + fs * 1.4, fs * 2);
+      c2.fillStyle = '#FFFFFF'; c2.fillText(text, x + fs * 0.7, y);
+      c2.restore();
+    }
+
     let last = null;
     return {
       canvas, overlay, interactive: true,
       step(src, t, inputs) {
-        const dt = last == null ? 0.016 : clamp(t - last, 0, 0.05); last = t;
+        const dt = last == null ? 0.016 : clamp(t - last, 0, 0.05); last = t; nowT = t;
         const ins = demo ? [demoInput(dt)] : (inputs || []);
+        if (!demo) face = faceNow();
         handle(ins, t);
         update(dt);
         ctx.drawImage(src.canvas, 0, 0);
+        drawBlush();
         drawTable();
         for (const g of glasses) if (!g.held) drawGlass(g, t);
         for (const b of bottles) if (!b.held) drawBottle(b);
@@ -843,10 +941,14 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
         for (const b of bottles) if (b.held) drawBottle(b);
         for (const d of drops) { ctx.fillStyle = rgbStr(d.c, d.a); ctx.beginPath(); ctx.arc(d.x, d.y, Math.max(1, unit * 0.016), 0, TAU); ctx.fill(); }
         drawLabels();
+        if (!demo) postDrunk(t);
         if (demo) drawCursors(ctx, ins);
-        else { octx.clearRect(0, 0, w, h); drawHelpers(octx, ins); drawCursors(octx, ins); drawTip(octx, tip(ins)); }
+        else { octx.clearRect(0, 0, w, h); drawHelpers(octx, ins); drawCursors(octx, ins); drawTip(octx, tip(ins)); drawMeter(octx); }
       },
       reset() { for (const g of glasses) { g.fill = 0; g.amounts = [0, 0, 0]; g.bubbles = []; g.fullFor = 0; } },
+      soberUp() { units = 0; nextHic = 0; },
+      state() { return { units, drunk: drunkness(), face, glasses: glasses.map(g => +g.fill.toFixed(2)) }; },
+      addUnits(n) { units += n; },
       dispose() { if (pourSrc) { try { pourSrc.stop(); } catch (e) { /* already stopped */ } } pourSrc = null; pourGain = null; }
     };
   }
@@ -854,7 +956,45 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   // ---------- Hand tracking (MediaPipe), loaded only when a play effect has the live camera ----------
   const MP_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
   const HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
-  const hands = { state: 'off', lm: null, res: null, last: -1, closed: {} };
+  const FACE_MODEL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+  const hands = { state: 'off', lm: null, res: null, last: -1, closed: {}, face: null, faceRes: null, faceLast: -1, faceTick: 0 };
+
+  // gulping and hiccup sounds
+  function gulp() {
+    const a = audio(); if (!a) return;
+    const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.12);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.28, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.18);
+  }
+  function hicSound() {
+    const a = audio(); if (!a) return;
+    const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(560, t); o.frequency.exponentialRampToValueAtTime(300, t + 0.09);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.13);
+  }
+
+  // camera pixels -> effect picture, matching how the camera is cropped and mirrored
+  function mapPt(p) {
+    const { sx, sy, sw, sh, vw, vh, mirror } = viewSrc.crop, W = viewSrc.w, H = viewSrc.h;
+    let x = (p.x * vw - sx) / sw * W;
+    if (mirror) x = W - x;
+    return { x, y: (p.y * vh - sy) / sh * H };
+  }
+  // The face tells the effect where your mouth and cheeks are (checked every other frame).
+  function faceNow() {
+    if (!hands.face || !camOn || video.readyState < 2 || !viewSrc || !viewSrc.crop) return null;
+    const now = performance.now();
+    if (++hands.faceTick % 2 === 0 && now > hands.faceLast + 1) {
+      hands.faceLast = now;
+      try { hands.faceRes = hands.face.detectForVideo(video, now); hands.faceErr = ''; } catch (e) { hands.faceRes = null; hands.faceErr = String(e && e.message || e); }
+    }
+    const L = hands.faceRes && hands.faceRes.faceLandmarks && hands.faceRes.faceLandmarks[0];
+    if (!L) return null;
+    const up = mapPt(L[13]), lo = mapPt(L[14]), le = mapPt(L[234]), re = mapPt(L[454]);
+    return { mouth: { x: (up.x + lo.x) / 2, y: (up.y + lo.y) / 2 }, size: Math.max(1, dist(le, re)), cheeks: [mapPt(L[50]), mapPt(L[280])] };
+  }
   async function loadHands() {
     if (hands.state !== 'off') return;
     hands.state = 'loading'; renderHandText();
@@ -867,6 +1007,11 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
       try { hands.lm = await create('GPU'); } catch (e) { hands.lm = await create('CPU'); }
       hands.state = 'ready';
       if (view === 'effect' && current && current.interactive) toast('Hand tracking on. Close your hand on a bottle to grab it.');
+      // face tracking loads after the hands, so you can start grabbing straight away
+      const createFace = delegate => vision.FaceLandmarker.createFromOptions(files, {
+        baseOptions: { modelAssetPath: FACE_MODEL, delegate }, runningMode: 'VIDEO', numFaces: 1
+      });
+      createFace('GPU').catch(() => createFace('CPU')).then(f => { hands.face = f; }).catch(() => { hands.face = null; });
     } catch (e) {
       hands.state = 'failed';
     }
@@ -911,7 +1056,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 
   const EFFECTS = [
     { id: 'inuman', name: 'Inuman', sub: 'Grab and pour', make: makeInuman, interactive: true,
-      help: 'Make a fist around a bottle to grab it, then tilt your hand to pour into a glass. Lift a full glass to your face and tilt it to drink. No camera? Drag the bottles with your mouse or finger.' }
+      help: 'Make a fist around a bottle to grab it, then tilt your hand to pour into a glass. Bring a glass (or the bottle) to your mouth and tilt it to drink. After two or three beers you start to feel it; soju hits faster. No camera? Drag the bottles with your mouse or finger.' }
   ];
 
   // ---------- picture source: the camera, or a plain backdrop when there is none ----------
@@ -1065,6 +1210,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
     $('helpText').textContent = e.help;
     $('helpPanel').hidden = true; $('helpBtn').setAttribute('aria-expanded', 'false');
     $('resetBtn').hidden = !e.interactive;
+    $('soberBtn').hidden = !e.interactive;
     camEl.hidden = false;
     document.documentElement.classList.add('locked');
     buildView();
@@ -1100,6 +1246,11 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   function renderSound() { $('soundBtn').textContent = `Sound: ${soundOn ? 'ON' : 'OFF'}`; }
   $('soundBtn').addEventListener('click', () => { soundOn = !soundOn; store('silverbooth.sound', soundOn ? 'on' : 'off'); renderSound(); if (soundOn) beep(880); });
   $('resetBtn').addEventListener('click', () => { if (viewFx && viewFx.reset) { viewFx.reset(); toast('Fresh glasses.'); } });
+  $('soberBtn').addEventListener('click', () => { if (viewFx && viewFx.soberUp) { viewFx.soberUp(); toast('Sober again.'); } });
+  // Add ?debug to the address to read the effect's state from the browser console (used for testing).
+  if (/[?&]debug\b/.test(location.search)) {
+    window.__silverBooth = { tracking: () => ({ hands: hands.state, face: !!hands.face, faceErr: hands.faceErr || '', faces: hands.faceRes && hands.faceRes.faceLandmarks ? hands.faceRes.faceLandmarks.length : null }), state: () => viewFx && viewFx.state && viewFx.state(), addDrinks: n => viewFx && viewFx.addUnits && viewFx.addUnits(n) };
+  }
   $('stripBtn').addEventListener('click', () => {
     if (busy) return;
     strip = !strip;
