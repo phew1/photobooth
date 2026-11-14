@@ -3,378 +3,270 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="Silver Booth: grab bottles with your hand and pour drinks on camera.">
+<meta name="description" content="Silver Booth: camera effects you play with your hands.">
 </head>
 <body>
 <title>Silver Booth</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<script>try { if (localStorage.getItem('silverbooth.look') === 'dark') document.documentElement.setAttribute('data-look', 'dark'); } catch (e) {}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Big+Shoulders+Display:wght@800&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
-/* Layout: a sticky top bar with search, filter chips, then a masonry feed of pins (live effects and your own photos and strips).
-   Opening a pin shows a close-up card: the live camera on the left, details and the shutter on the right, "More like this" below. */
+/* Layout: a white home page with a full-width wordmark, labelled sections and square effect tiles.
+   Tapping a tile opens the camera full screen straight away, with the controls at its edges.
+   The home page is deliberately light only; the camera screen is always dark. */
 :root {
-  --bg: #FFFFFF;
-  --ink: #111111;
-  --muted: #62625F;
-  --field: #EDEDEB;
-  --hover: #E3E3E1;
-  --card: #FFFFFF;
-  --card-shadow: 0 2px 24px rgba(0, 0, 0, .12);
-  --media-bg: #E9E9E7;
-  --accent: #C2461B;
-  --on-accent: #FFFFFF;
-  --chip-on: #111111;
-  --chip-on-ink: #FFFFFF;
-  --screen-ink: #F2F2F0;
-  --screen-dim: rgba(242, 242, 240, .7);
-  --screen-line: rgba(242, 242, 240, .32);
-  --screen-glass: rgba(0, 0, 0, .42);
+  color-scheme: light;
+  --paper: #FFFFFF;
+  --ink: #0A0A0A;
+  --muted: #6B6B6B;
+  --rule: #0A0A0A;
+  --tile: #1A1714;
+  --on-dark: #FFFFFF;
   --live: #F0953C;
-  --flash: #FFFFFF;
-  --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
   --body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
 }
-/* White by default; the moon button in the top bar switches to dark and is remembered. */
-:root { color-scheme: light; }
-:root[data-look="dark"] {
-  --bg: #0E0E0F; --ink: #F2F2F0; --muted: #A3A3A0; --field: #232325; --hover: #303032;
-  --card: #18181A; --card-shadow: 0 2px 28px rgba(0, 0, 0, .55); --media-bg: #1F1F21;
-  --accent: #F0953C; --on-accent: #1B1006; --chip-on: #F2F2F0; --chip-on-ink: #0E0E0F;
-  color-scheme: dark;
-}
-
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html.locked, html.locked body { overflow: hidden; }
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--paper);
   color: var(--ink);
   font-family: var(--body);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-body::before {
-  content: "";
-  position: fixed; inset: 0 0 auto;
-  height: env(safe-area-inset-top, 0px);
-  z-index: 30;
-  background: var(--bg);
-}
-.cam-feed { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
 button { font-family: inherit; }
-button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-svg { display: block; }
+button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+.cam-feed { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
 
-/* ---------- Top bar ---------- */
-.bar {
-  position: sticky;
-  top: env(safe-area-inset-top, 0px);
-  z-index: 20;
-  background: var(--bg);
-}
-.bar-in {
-  max-width: 1480px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-block: 12px;
+/* ---------- Home ---------- */
+.mast {
+  padding-top: 28px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 .logo {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  flex: none;
-  padding: 4px 8px 4px 4px;
-  border: 0;
-  border-radius: 999px;
-  background: none;
-  color: var(--ink);
-  cursor: pointer;
-}
-.logo:hover { background: var(--hover); }
-.logo-mark {
-  width: 40px; height: 40px;
-  display: grid; place-items: center;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--on-accent);
-  font: 800 18px/1 var(--display);
-  letter-spacing: .03em;
-}
-.logo-word { font: 800 25px/1 var(--display); text-transform: uppercase; letter-spacing: .01em; }
-.nav { display: flex; gap: 2px; flex: none; }
-.pill {
-  font: 600 15px/1 var(--body);
-  padding: 13px 16px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: .25em;
+  font-weight: 800;
+  font-stretch: 112%;
+  font-size: clamp(40px, 11vw, 150px);
+  line-height: .9;
+  letter-spacing: -.01em;
+  text-transform: uppercase;
   white-space: nowrap;
-  transition: background-color .15s;
+  overflow: hidden;
 }
-.pill:hover { background: var(--hover); }
-.pill.on { background: var(--chip-on); color: var(--chip-on-ink); }
-.pill.accent { background: var(--accent); color: var(--on-accent); }
-.pill.accent:hover { filter: brightness(1.08); }
-.pill.soft { background: var(--field); }
-.pill.soft:hover { background: var(--hover); }
-.pill.big { padding: 15px 22px; font-size: 16px; }
-.pill:disabled { opacity: .5; cursor: not-allowed; }
-.search {
-  flex: 1;
-  min-width: 0;
+.wrap {
+  max-width: 1124px;
+  margin: 0 auto;
+  padding-block: 34px 80px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 30px;
+}
+.about { margin: 0; font-size: 13px; max-width: 70ch; }
+.sec { display: grid; gap: 12px; }
+.sec-head {
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 48px;
-  padding: 0 18px;
-  border-radius: 999px;
-  background: var(--field);
-  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
-.search:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 50%, transparent); }
-.search input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--ink);
-  font: 500 16px var(--body);
+.sec-head::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 172px));
+  gap: 12px;
 }
-.search input::placeholder { color: var(--muted); }
-.bar-actions { display: flex; gap: 6px; flex: none; }
-@media (max-width: 900px) {
-  .bar-in { flex-wrap: wrap; row-gap: 10px; }
-  .nav { display: none; }
-  .bar-actions { margin-left: auto; }
-  .search { order: 5; flex-basis: 100%; }
+@media (max-width: 560px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 }
-@media (max-width: 480px) {
-  .logo-word { display: none; }
-  .bar-actions .pill { padding: 12px 14px; font-size: 14px; }
-}
-
-/* ---------- Feed ---------- */
-.wrap {
-  max-width: 1480px;
-  margin: 0 auto;
-  padding-block: 6px 56px;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-}
-.feed-head { display: grid; justify-items: center; gap: 12px; margin-bottom: 22px; }
-.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-.chip {
-  font: 600 14.5px/1 var(--body);
-  padding: 11px 17px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--field);
-  color: var(--ink);
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-}
-.chip:hover { background: var(--hover); }
-.chip[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-ink); }
-.status { margin: 0; font-size: 13px; color: var(--muted); text-align: center; max-width: 64ch; }
-.status .dot {
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-  margin-right: 8px; vertical-align: 0;
-  background: var(--muted);
-}
-.status.on .dot { background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 30%, transparent); }
-.empty { margin: 40px auto; text-align: center; color: var(--muted); max-width: 44ch; font-size: 16px; }
-
-.masonry { display: grid; align-items: start; }
-.mcol { display: grid; align-content: start; min-width: 0; }
-.pin { display: grid; gap: 8px; min-width: 0; margin-bottom: 8px; }
-.pin-media {
+.tile {
   position: relative;
+  aspect-ratio: 1;
   max-width: 100%;
-  border-radius: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--tile);
   overflow: hidden;
-  background: var(--media-bg);
-  isolation: isolate;
+  cursor: pointer;
+  text-align: left;
+  color: var(--on-dark);
 }
-.pin-media canvas, .pin-media img {
+.tile canvas, .tile img {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform .5s cubic-bezier(.2, .7, .2, 1);
 }
-.pin-open {
-  position: absolute; inset: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 16px;
-  background: transparent;
-  cursor: zoom-in;
-  transition: background-color .15s;
-}
-.pin-media:hover .pin-open { background: rgba(0, 0, 0, .3); }
-.pin-open:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
-.pin-act {
-  position: absolute; top: 10px; right: 10px;
-  z-index: 1;
-  font: 600 14px/1 var(--body);
-  padding: 12px 16px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--on-accent);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity .15s;
-}
-.pin-media:hover .pin-act, .pin-act:focus-visible { opacity: 1; }
-@media (hover: none) { .pin-act.keep { opacity: 1; padding: 10px 13px; font-size: 13px; } }
-.pin-meta { display: grid; gap: 5px; padding: 0 4px; min-width: 0; }
-.pin-title { margin: 0; font: 600 14.5px/1.3 var(--body); overflow-wrap: anywhere; }
-.pin-sub { margin: 0; display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12.5px; color: var(--muted); }
-.pin-sub span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.av {
-  width: 24px; height: 24px; flex: none;
-  display: grid; place-items: center;
-  border-radius: 50%;
-  font: 700 9.5px/1 var(--body);
-  letter-spacing: .02em;
-  color: #FFFFFF;
-}
-
-/* ---------- Close-up ---------- */
-.closeup {
-  max-width: 1016px;
-  margin: 6px auto 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  background: var(--card);
-  border-radius: 32px;
-  box-shadow: var(--card-shadow);
-  overflow: hidden;
-}
-.media {
-  position: relative;
-  align-self: stretch;
-  max-width: 100%;
-  max-height: 82vh;
-  background: #000000;
-  overflow: hidden;
-  isolation: isolate;
-}
-.media.cap-mode { background: var(--media-bg); max-height: 78vh; }
-.media canvas {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%;
-  object-fit: contain;
-  display: block;
-}
-.media.immersive canvas { object-fit: cover; }
-.media.play canvas { touch-action: none; cursor: grab; }
-.media.play:active canvas { cursor: grabbing; }
-.media img {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%;
-  object-fit: contain;
-  display: block;
-}
-.media-back {
-  position: absolute; top: 14px; left: 14px;
-  z-index: 4;
-  width: 46px; height: 46px;
-  display: grid; place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, .94);
-  color: #111111;
-  cursor: pointer;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, .2);
-}
-.media.immersive {
-  position: fixed; inset: 0;
-  z-index: 80;
-  max-height: none;
-  aspect-ratio: auto !important;
-}
-.media.immersive .media-back {
-  top: calc(env(safe-area-inset-top, 0px) + 14px);
-  left: max(14px, env(safe-area-inset-left, 0px));
-}
-.media-ctl {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  z-index: 3;
-  display: none;
-  justify-items: center;
-  gap: 12px;
-  padding: 44px 14px 16px;
-  background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, .55));
-}
-.media.immersive .media-ctl {
-  display: grid;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
-}
-@media (max-width: 760px) { .media.fx-mode .media-ctl { display: grid; } }
-/* play effects keep the bottom of the picture for the bottles and glasses, so the shutter sits on the right edge */
-.media.play .media-ctl {
-  left: auto; right: max(12px, env(safe-area-inset-right, 0px));
-  top: 50%; bottom: auto;
-  transform: translateY(-50%);
-  padding: 0;
-  gap: 10px;
-  background: none;
-}
-.media.play .media-ctl .seg { flex-direction: column; border-radius: 20px; }
-.media.play .media-ctl .seg button { padding: 9px 12px; }
-.media.play .shutter { width: 60px; height: 60px; }
-.shutter {
-  width: 74px; height: 74px;
-  padding: 0;
-  position: relative;
-  border: 4px solid var(--screen-ink);
-  border-radius: 50%;
-  background: transparent;
-  cursor: pointer;
-}
-.shutter::after {
+.tile:hover canvas, .tile:hover img { transform: scale(1.04); }
+.tile::after {
   content: "";
-  position: absolute; inset: 6px;
-  border-radius: 50%;
-  background: var(--screen-ink);
-  transition: transform .12s, background-color .2s;
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, .55), rgba(0, 0, 0, 0) 50%);
+  pointer-events: none;
 }
-.shutter.strip::after { background: var(--live); }
-.shutter:active:not(:disabled)::after { transform: scale(.86); }
-.shutter:disabled { opacity: .55; }
+.tile-text { position: absolute; left: 10px; right: 10px; bottom: 9px; z-index: 1; display: grid; gap: 1px; }
+.tile-name {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.05;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .55);
+  overflow-wrap: anywhere;
+}
+.tile-sub {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+}
+.foot { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* ---------- Camera screen ---------- */
+.cam {
+  position: fixed; inset: 0;
+  z-index: 50;
+  background: #000000;
+  color: var(--on-dark);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.stage canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  touch-action: none;
+}
+.more {
+  position: absolute; z-index: 3;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: max(10px, env(safe-area-inset-left, 0px));
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: var(--on-dark);
+  font-size: 15px;
+  cursor: pointer;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .7);
+}
+.help {
+  position: absolute; z-index: 3;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  right: max(14px, env(safe-area-inset-right, 0px));
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  padding: 0;
+  border: 1.5px solid var(--on-dark);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .2);
+  color: var(--on-dark);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.help-panel {
+  position: absolute; z-index: 4;
+  top: calc(env(safe-area-inset-top, 0px) + 54px);
+  right: max(14px, env(safe-area-inset-right, 0px));
+  width: min(300px, calc(100% - 28px));
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: rgba(0, 0, 0, .72);
+  font-size: 14px;
+}
+.help-panel p { margin: 0; }
+.help-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.box {
+  padding: 9px 14px;
+  border: 1px solid var(--on-dark);
+  border-radius: 0;
+  background: rgba(0, 0, 0, .25);
+  color: var(--on-dark);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.box:hover { background: rgba(255, 255, 255, .14); }
+.bottom-left, .bottom-right {
+  position: absolute; z-index: 3;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bottom-left { left: max(14px, env(safe-area-inset-left, 0px)); align-items: flex-start; }
+.bottom-right { right: max(14px, env(safe-area-inset-right, 0px)); align-items: flex-end; }
+.thumb {
+  width: 48px; height: 48px;
+  padding: 0;
+  border: 2px solid var(--on-dark);
+  background: #222 center / cover no-repeat;
+  cursor: pointer;
+}
+.shutter {
+  position: absolute; z-index: 3;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  transform: translateX(-50%);
+  width: 70px; height: 70px;
+  padding: 0;
+  border: 4px solid var(--on-dark);
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .35);
+  cursor: pointer;
+  transition: transform .1s, background-color .15s;
+}
+.shutter:active:not(:disabled) { transform: translateX(-50%) scale(.92); background: rgba(255, 255, 255, .25); }
+.shutter.strip { border-color: var(--live); }
+.shutter:disabled { opacity: .5; }
+.cam-status {
+  position: absolute; z-index: 2;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100% - 40px));
+  margin: 0;
+  text-align: center;
+  font-size: 17px;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .8);
+  pointer-events: none;
+}
 .lamps {
-  position: absolute; top: 24px; left: 50%;
-  z-index: 3;
+  position: absolute; z-index: 3;
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  left: 50%;
   transform: translateX(-50%);
   display: flex; gap: 8px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: var(--screen-glass);
 }
-.lamps i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--screen-dim); }
+.lamps i { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--on-dark); }
 .lamps i.on { background: var(--live); border-color: var(--live); }
 .lamps i.now { border-color: var(--live); animation: blink .8s steps(2, jump-none) infinite; }
 @keyframes blink { 50% { border-color: transparent; } }
 .count {
-  position: absolute; inset: 0;
-  z-index: 2;
+  position: absolute; inset: 0; z-index: 2;
   display: grid; place-items: center;
-  font: 800 clamp(120px, 22vw, 260px)/1 var(--display);
-  color: var(--screen-ink);
+  font-size: clamp(120px, 26vw, 260px);
+  font-weight: 800;
+  line-height: 1;
   text-shadow: 0 6px 40px rgba(0, 0, 0, .6);
   pointer-events: none;
 }
@@ -385,232 +277,118 @@ svg { display: block; }
   80% { opacity: 1; }
   100% { opacity: .1; transform: scale(.94); }
 }
-.flash { position: absolute; inset: 0; z-index: 5; background: var(--flash); opacity: 0; pointer-events: none; }
+.flash { position: absolute; inset: 0; z-index: 5; background: #FFFFFF; opacity: 0; pointer-events: none; }
 .flash.go { animation: flash .5s ease-out both; }
 @keyframes flash { 0% { opacity: .95; } 100% { opacity: 0; } }
-
-.seg { display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--field); }
-.seg button {
-  font: 600 14px/1 var(--body);
-  padding: 10px 18px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
-}
-.seg button[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-ink); }
-.seg button:disabled { cursor: default; }
-.seg.dark { background: var(--screen-glass); border: 1px solid var(--screen-line); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-.seg.dark button { color: var(--screen-dim); }
-.seg.dark button[aria-pressed="true"] { background: var(--screen-ink); color: #000000; }
-
-.details { display: grid; align-content: start; gap: 22px; padding: 26px 32px 32px; min-width: 0; }
-.det-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.det-tools { display: flex; gap: 4px; }
-.round {
-  width: 46px; height: 46px;
-  display: grid; place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
-}
-.round:hover { background: var(--hover); }
-.round[aria-pressed="false"] { color: var(--muted); }
-.round.soft { background: var(--field); color: var(--ink); flex: none; }
-.round.soft:hover { background: var(--hover); }
-.det-head { display: grid; gap: 8px; }
-.det-kind { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--muted); }
-.det-title { margin: 0; font: 700 clamp(28px, 3.4vw, 38px)/1.08 var(--body); letter-spacing: -.01em; text-wrap: balance; }
-.det-desc { margin: 0; font-size: 16px; line-height: 1.55; max-width: 46ch; }
-.block { display: grid; gap: 10px; }
-.block-label { margin: 0; font-size: 15px; font-weight: 600; }
-.block-text { margin: 0; font-size: 14px; color: var(--muted); }
-.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.mine { display: flex; flex-wrap: wrap; gap: 8px; }
-.mine button {
-  height: 76px;
-  padding: 0;
-  border: 0;
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--media-bg);
-  cursor: pointer;
-}
-.mine img { display: block; height: 100%; width: auto; }
-.more { margin-top: 40px; display: grid; gap: 18px; }
-.more-title { margin: 0; text-align: center; font: 700 22px/1.2 var(--body); }
-
-@media (max-width: 760px) {
-  .closeup { grid-template-columns: minmax(0, 1fr); border-radius: 24px; margin-top: 0; }
-  .media.fx-mode { max-height: none; }
-  .details { padding: 18px 18px 24px; gap: 18px; }
-}
-
 .toast {
-  position: fixed;
+  position: absolute; z-index: 4;
   left: 50%;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
-  z-index: 90;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  transform: translateX(-50%);
   max-width: calc(100% - 32px);
-  padding: 13px 20px;
-  border-radius: 999px;
-  background: var(--chip-on);
-  color: var(--chip-on-ink);
-  font: 600 14px/1.3 var(--body);
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, .6);
+  font-size: 13px;
   text-align: center;
   opacity: 0;
-  transform: translate(-50%, 16px);
-  transition: opacity .2s, transform .2s;
+  transition: opacity .2s;
   pointer-events: none;
 }
-.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.show { opacity: 1; }
+
+/* ---------- Photo viewer ---------- */
+.viewer {
+  position: fixed; inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 14px;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: rgba(0, 0, 0, .94);
+  color: var(--on-dark);
+}
+.viewer img { display: block; max-width: 100%; max-height: 72vh; object-fit: contain; }
+.view-cap { margin: 0; font-family: var(--mono); font-size: 12px; color: rgba(255, 255, 255, .7); text-align: center; }
+.view-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+.view-msg { margin: 0; min-height: 1.5em; font-size: 13px; text-align: center; }
 
 @media (prefers-reduced-motion: reduce) {
   .count.tick, .flash.go, .lamps i.now { animation: none !important; }
-  .toast { transition: none; }
+  .tile canvas, .tile img { transition: none; }
 }
 </style>
 
 <video id="video" class="cam-feed" playsinline muted autoplay aria-hidden="true"></video>
-<input id="fileIn" type="file" accept="image/*" hidden>
 
-<header class="bar">
-  <div class="bar-in">
-    <button class="logo" id="logoBtn" type="button" aria-label="Silver Booth home">
-      <span class="logo-mark" aria-hidden="true">SB</span><span class="logo-word">Silver Booth</span>
-    </button>
-    <nav class="nav" aria-label="Main">
-      <button class="pill on" id="navHome" type="button">Home</button>
-      <button class="pill" id="navPins" type="button">Your pins</button>
-    </nav>
-    <label class="search">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5.5 5.5"/></svg>
-      <input id="q" type="search" placeholder="Search effects and your pins" autocomplete="off" aria-label="Search effects and your pins">
-    </label>
-    <div class="bar-actions">
-      <button class="round soft" id="lookBtn" type="button" aria-pressed="false" aria-label="Dark mode" title="Dark mode">
-        <svg id="moonIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z"/></svg>
-        <svg id="sunIcon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" hidden><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
-      </button>
-      <button class="pill accent" id="camBtn" type="button">Turn on camera</button>
-      <button class="pill soft" id="photoBtn" type="button">Use a photo</button>
-    </div>
-  </div>
+<header class="mast">
+  <h1 class="logo" id="logo" aria-label="Silver Booth"><span>Silver</span><span>Booth</span></h1>
 </header>
-
-<main class="wrap" id="feedView">
-  <div class="feed-head">
-    <div class="chips" id="chips" aria-label="Filter pins">
-      <button class="chip" type="button" data-chip="all" aria-pressed="true">All</button>
-      <button class="chip" type="button" data-chip="pins" aria-pressed="false">Your pins</button>
-    </div>
-    <p class="status" id="status"><span class="dot"></span><span id="statusText"></span></p>
-  </div>
-  <p class="empty" id="feedEmpty" hidden></p>
-  <div class="masonry" id="feed"></div>
-</main>
-
-<main class="wrap" id="pinView" hidden>
-  <article class="closeup">
-    <div class="media fx-mode" id="media">
-      <div id="stage"></div>
-      <img id="capImg" alt="" hidden>
-      <div class="lamps" id="lamps" hidden aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <div class="count" id="count" aria-hidden="true"></div>
-      <div class="flash" id="flash" aria-hidden="true"></div>
-      <button class="media-back" id="mediaBack" type="button" aria-label="Back">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg>
-      </button>
-      <div class="media-ctl" id="mediaCtl">
-        <div class="seg dark" role="group" aria-label="Capture mode">
-          <button type="button" data-mode="photo" aria-pressed="true">Photo</button>
-          <button type="button" data-mode="strip" aria-pressed="false">Strip</button>
-        </div>
-        <button class="shutter" id="shutter" type="button" aria-label="Take a photo"></button>
-      </div>
-    </div>
-
-    <div class="details">
-      <div class="det-top">
-        <div class="det-tools" id="detTools">
-          <button class="round" id="soundBtn" type="button" aria-pressed="true" aria-label="Sound" title="Sound">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5v14l-4.5-4.5H4z" fill="currentColor"/><path id="soundWave" d="M16 8.5a5 5 0 0 1 0 7M18.8 6a8.5 8.5 0 0 1 0 12"/></svg>
-          </button>
-          <button class="round" id="fullBtn" type="button" aria-label="Full screen" title="Full screen">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
-          </button>
-        </div>
-        <button class="pill accent big" id="takeBtn" type="button">Take photo</button>
-        <button class="pill accent big" id="dlBtn" type="button" hidden>Download</button>
-      </div>
-
-      <div class="det-head">
-        <p class="det-kind" id="detKind"></p>
-        <h1 class="det-title" id="detTitle"></h1>
-        <p class="det-desc" id="detDesc"></p>
-      </div>
-
-      <div id="fxBlocks" class="details" style="padding:0">
-        <div class="block">
-          <p class="block-label">Mode</p>
-          <div class="seg" role="group" aria-label="Capture mode">
-            <button type="button" data-mode="photo" aria-pressed="true">Photo</button>
-            <button type="button" data-mode="strip" aria-pressed="false">Strip of 4</button>
-          </div>
-          <p class="block-text" id="modeText">One shot each time you press Take photo.</p>
-        </div>
-        <div class="block">
-          <p class="block-label">Camera</p>
-          <p class="block-text" id="srcText"></p>
-          <p class="block-text" id="handText" hidden></p>
-          <div class="row">
-            <button class="pill soft" id="pCam" type="button">Turn on camera</button>
-            <button class="pill soft" id="pPhoto" type="button">Use a photo</button>
-            <button class="pill soft" id="pFlip" type="button" hidden>Flip camera</button>
-            <button class="pill soft" id="resetGlasses" type="button" hidden>Fresh glasses</button>
-          </div>
-        </div>
-        <div class="block">
-          <p class="block-label" id="mineLabel">Your pins from this effect</p>
-          <div class="mine" id="mine"></div>
-          <p class="block-text" id="mineEmpty">Nothing yet. Your photos and strips will show up here.</p>
-        </div>
-      </div>
-
-      <div id="capBlocks" class="details" style="padding:0" hidden>
-        <div class="row">
-          <button class="pill soft" id="tryBtn" type="button">Try this effect</button>
-          <button class="pill soft" id="delBtn" type="button">Delete pin</button>
-          <span class="block-text" id="delAsk" hidden>Delete this pin?</span>
-          <button class="pill accent" id="delYes" type="button" hidden>Delete</button>
-          <button class="pill soft" id="delNo" type="button" hidden>Keep</button>
-        </div>
-        <p class="block-text">Pins last until you close this page. Download the ones you want to keep.</p>
-      </div>
-    </div>
-  </article>
-
-  <section class="more" aria-labelledby="moreTitle">
-    <h2 class="more-title" id="moreTitle">More like this</h2>
-    <div class="masonry" id="more"></div>
+<main class="wrap" id="home">
+  <p class="about">Silver Booth makes camera effects you play with your hands. Pick one and your camera opens.</p>
+  <section class="sec" aria-labelledby="secPlay">
+    <h2 class="sec-head" id="secPlay">Play</h2>
+    <div class="tiles" id="tilesPlay"></div>
   </section>
+  <section class="sec" id="photosSec" aria-labelledby="secPhotos" hidden>
+    <h2 class="sec-head" id="secPhotos">Your photos</h2>
+    <div class="tiles" id="tilesPhotos"></div>
+  </section>
+  <p class="foot">Everything runs in your browser. Photos stay on your device until you save them.</p>
 </main>
 
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<section class="cam" id="cam" hidden aria-label="Camera">
+  <div class="stage" id="stage"></div>
+  <div class="count" id="count" aria-hidden="true"></div>
+  <div class="flash" id="flash" aria-hidden="true"></div>
+  <p class="cam-status" id="camStatus" role="status" aria-live="polite"></p>
+  <div class="lamps" id="lamps" hidden aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <button class="more" id="moreBtn" type="button">&lt; more effects</button>
+  <button class="help" id="helpBtn" type="button" aria-label="How to play" aria-expanded="false" aria-controls="helpPanel">?</button>
+  <div class="help-panel" id="helpPanel" hidden>
+    <p id="helpText"></p>
+    <div class="help-row">
+      <button class="box" id="soundBtn" type="button">Sound: ON</button>
+      <button class="box" id="resetBtn" type="button">Fresh glasses</button>
+    </div>
+  </div>
+  <div class="bottom-left">
+    <button class="thumb" id="thumbBtn" type="button" hidden aria-label="Open your last photo"></button>
+    <button class="box" id="stripBtn" type="button" aria-pressed="false">Strip: OFF</button>
+  </div>
+  <button class="shutter" id="shutter" type="button" aria-label="Take a photo"></button>
+  <div class="bottom-right">
+    <button class="box" id="flipBtn" type="button" hidden>Camera: Front</button>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</section>
+
+<section class="viewer" id="viewer" hidden aria-label="Photo">
+  <img id="viewImg" alt="">
+  <p class="view-cap" id="viewCap"></p>
+  <div class="view-actions">
+    <button class="box" id="saveBtn" type="button">Save</button>
+    <button class="box" id="delBtn" type="button">Delete</button>
+    <span id="delAsk" hidden>Delete this photo?</span>
+    <button class="box" id="delYes" type="button" hidden>Yes, delete</button>
+    <button class="box" id="delNo" type="button" hidden>Keep</button>
+    <button class="box" id="closeView" type="button">Close</button>
+  </div>
+  <p class="view-msg" id="viewMsg" role="status" aria-live="polite"></p>
+</section>
 
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const MONO = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
-  const DISPLAY = '"Big Shoulders Display", "Arial Narrow", Impact, sans-serif';
+  const DISPLAY = '"Archivo", system-ui, sans-serif';
   const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-  // Inside the Claude artifact viewer the live camera is off, so effects run on a sample figure or your photo.
+  // Inside the Claude artifact viewer the camera is off, so the bottles can only be dragged there.
   const inViewer = !!(window.claude && typeof window.claude.use === 'function');
   const hasMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  const canCam = hasMedia && !inViewer;
   const downloadsP = inViewer ? Promise.resolve(window.claude.use('downloads')).catch(() => null) : Promise.resolve(null);
   const store = (k, v) => {
     try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ }
@@ -620,12 +398,42 @@ svg { display: block; }
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const p2 = n => String(n).padStart(2, '0');
   const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-  const fmtWhen = d => `${p2(d.getDate())} ${MON[d.getMonth()]} ${d.getFullYear()}, ${p2(d.getHours())}:${p2(d.getMinutes())}`;
 
-  // =====================================================================
-  // Effects. Each make(w, h) returns { canvas, step(src, t) }.
-  // src = { canvas, data: ImageData } holds the current (mirrored) camera frame.
-  // =====================================================================
+  // ---------- state shared with the effect code ----------
+  let view = 'home', current = null;
+  let stream = null, camOn = false, camState = 'off', facing = 'user', multiCam = false;
+  const video = $('video');
+
+  // ---------- sound ----------
+  let actx = null, soundOn = store('silverbooth.sound') !== 'off';
+  function audio() {
+    if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } }
+    if (actx && actx.state === 'suspended') actx.resume().catch(() => {});
+    return actx;
+  }
+  function beep(freq) {
+    if (!soundOn) return; const a = audio(); if (!a) return;
+    const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+    o.type = 'square'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.12);
+  }
+  function shutterSound() {
+    if (!soundOn) return; const a = audio(); if (!a) return;
+    const t = a.currentTime, len = Math.floor(a.sampleRate * 0.16), buf = a.createBuffer(1, len, a.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (i < len * 0.3 ? 1 : 0.45);
+    const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    s.buffer = buf; f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 0.8;
+    g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    s.connect(f).connect(g).connect(a.destination); s.start(t);
+  }
+
+  let toastTimer = 0;
+  function toast(t) {
+    const el = $('toast'); el.textContent = t; el.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+  }
+
   // =====================================================================
   // Inuman: an interactive effect. Real bottles are drawn into the camera picture.
   // Close your hand on one to grab it (it follows your hand), tilt your hand to pour.
@@ -1064,16 +872,7 @@ svg { display: block; }
     }
     renderHandText();
   }
-  function renderHandText() {
-    const el = $('handText'), show = !!(current && current.interactive);
-    el.hidden = !show;
-    if (!show) return;
-    el.textContent = !camOn ? 'Drag the bottles with your mouse or finger. With the live camera, you can grab them with your hand.'
-      : hands.state === 'loading' ? 'Loading hand tracking…'
-      : hands.state === 'ready' ? 'Hand tracking on. Close your hand around a bottle to grab it, then tilt your hand to pour.'
-      : hands.state === 'failed' ? 'Hand tracking couldn’t load (it needs an internet connection). Drag with your mouse or finger instead.'
-      : '';
-  }
+  function renderHandText() { updateCamStatus(); }
   // Each tracked hand becomes an input at the palm. It is "closed" (grabbing) when the
   // fingers curl into a fist or the thumb and index finger pinch; its angle tilts what it holds.
   function handInputs() {
@@ -1109,49 +908,18 @@ svg { display: block; }
     });
   }
 
-  // ar = pin height ÷ width, so the feed gets Pinterest-style varied heights
+
   const EFFECTS = [
-    { id: 'inuman', name: 'Inuman', kind: 'play', tag: 'Grab and pour', ar: 1.25, make: makeInuman, interactive: true,
-      hint: 'Close your hand around a bottle to grab it, then tilt your hand to pour into a glass. Mix drinks, then lift a full glass up to your face to drink it.' },
+    { id: 'inuman', name: 'Inuman', sub: 'Grab and pour', make: makeInuman, interactive: true,
+      help: 'Make a fist around a bottle to grab it, then tilt your hand to pour into a glass. Lift a full glass to your face and tilt it to drink. No camera? Drag the bottles with your mouse or finger.' }
   ];
-  const KIND = {
-    play: { label: 'Play effect', av: 'PL', bg: '#2E6B4C' }
-  };
 
-  // =====================================================================
-  // Sources: live camera, an uploaded photo, or a drawn sample figure.
-  // Stills sway gently so the motion effects have movement to work with.
-  // =====================================================================
-  const video = $('video');
-  let stream = null, camOn = false, camError = '', facing = 'user', multiCam = false, photo = null;
-  const sample = makeSample();
-
-  function makeSample() {
-    const c = mk(640, 480), x = c.getContext('2d');
-    const bg = x.createLinearGradient(0, 0, 640, 480);
-    bg.addColorStop(0, '#24476B'); bg.addColorStop(1, '#C9744E');
-    x.fillStyle = bg; x.fillRect(0, 0, 640, 480);
-    for (let i = 0; i < 640; i += 32) { x.fillStyle = 'rgba(255,255,255,.07)'; x.fillRect(i, 0, 14, 480); }
-    x.fillStyle = '#E2B13C'; x.beginPath(); x.ellipse(320, 520, 200, 170, 0, 0, Math.PI * 2); x.fill();
-    x.fillStyle = '#B97C5E'; x.fillRect(285, 300, 70, 70);
-    x.strokeStyle = '#E2B13C'; x.lineWidth = 46; x.lineCap = 'round';
-    x.beginPath(); x.moveTo(470, 400); x.lineTo(520, 250); x.stroke();
-    x.fillStyle = '#D69A76'; x.beginPath(); x.arc(526, 220, 40, 0, Math.PI * 2); x.fill();
-    const face = x.createRadialGradient(300, 210, 20, 320, 235, 125);
-    face.addColorStop(0, '#EDB993'); face.addColorStop(1, '#B97C5E');
-    x.fillStyle = face; x.beginPath(); x.ellipse(320, 230, 92, 112, 0, 0, Math.PI * 2); x.fill();
-    x.fillStyle = '#231915'; x.beginPath(); x.ellipse(320, 160, 104, 66, 0, Math.PI, 0); x.fill();
-    x.fillStyle = '#1A1310';
-    x.beginPath(); x.ellipse(287, 228, 10, 13, 0, 0, Math.PI * 2); x.ellipse(353, 228, 10, 13, 0, 0, Math.PI * 2); x.fill();
-    x.strokeStyle = '#6E2E26'; x.lineWidth = 7; x.beginPath(); x.arc(320, 268, 34, 0.2, Math.PI - 0.2); x.stroke();
-    return c;
-  }
-
+  // ---------- picture source: the camera, or a plain backdrop when there is none ----------
   function newSrc(w, h) {
     const canvas = mk(w, h);
-    return { canvas, ctx: canvas.getContext('2d', { willReadFrequently: true }), w, h, data: null };
+    return { canvas, ctx: canvas.getContext('2d', { willReadFrequently: true }), w, h, data: null, crop: null };
   }
-  function drawSource(src, t) {
+  function drawSource(src) {
     const { ctx, w, h } = src;
     if (camOn && video.readyState >= 2 && video.videoWidth) {
       const vw = video.videoWidth, vh = video.videoHeight;
@@ -1164,226 +932,109 @@ svg { display: block; }
       src.crop = { sx: (vw - sw) / 2, sy: (vh - sh) / 2, sw, sh, vw, vh, mirror: facing === 'user' };
     } else {
       src.crop = null;
-      const img = photo || sample, iw = img.width, ih = img.height, a = reduceMotion ? 0 : 1;
-      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
-      ctx.save();
-      ctx.translate(w / 2 + Math.sin(t * 0.9) * w * 0.05 * a, h / 2 + Math.sin(t * 0.63 + 1) * h * 0.03 * a);
-      ctx.rotate(Math.sin(t * 0.5) * 0.06 * a);
-      const sc = Math.max(w / iw, h / ih) * 1.14;
-      ctx.drawImage(img, -iw * sc / 2, -ih * sc / 2, iw * sc, ih * sc);
-      ctx.restore();
+      const g = ctx.createRadialGradient(w * 0.5, h * 0.35, 0, w * 0.5, h * 0.4, Math.max(w, h) * 0.75);
+      g.addColorStop(0, '#4A3B30'); g.addColorStop(1, '#141110');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
     }
-    src.data = ctx.getImageData(0, 0, w, h);
   }
 
   async function startCamera(nextFacing) {
-    if (!hasMedia) { camError = 'none'; onSourceChange(); return; }
+    if (inViewer || !hasMedia) { camState = inViewer ? 'preview' : 'none'; updateCamStatus(); return; }
     stopCamera();
+    camState = 'starting'; updateCamStatus();
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: nextFacing || 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false
       });
+      if (view !== 'effect') { stopCamera(); return; }   // left the camera screen while it was starting
       video.srcObject = stream;
       await video.play().catch(() => {});
       facing = nextFacing || 'user';
-      camOn = true; camError = '';
+      camOn = true; camState = 'on';
       try { multiCam = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput').length > 1; } catch (e) { multiCam = false; }
-      toast('Camera on.');
+      if (current && current.interactive) loadHands();
     } catch (e) {
       camOn = false;
-      camError = e && e.name === 'NotAllowedError' ? 'blocked' : 'none';
-      toast(camError === 'blocked' ? 'Camera access was blocked.' : 'No camera found.');
+      camState = e && e.name === 'NotAllowedError' ? 'blocked' : 'none';
     }
-    onSourceChange();
+    updateCamStatus();
   }
   function stopCamera() {
     if (stream) stream.getTracks().forEach(tr => tr.stop());
     stream = null; camOn = false; video.srcObject = null;
   }
 
-  async function loadImage(file) {
-    if (window.createImageBitmap) { try { return await createImageBitmap(file); } catch (e) { /* fall back to <img> */ } }
-    const url = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
-    return await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
+  function updateCamStatus() {
+    let t = '';
+    if (camState === 'starting') t = 'Starting camera…';
+    else if (camState === 'blocked') t = 'Camera access is blocked. Allow the camera for this site in your browser settings, then reload.';
+    else if (camState === 'none') t = 'No camera found. You can still drag the bottles with your mouse or finger.';
+    else if (camState === 'preview') t = 'The camera doesn’t work in this preview. Open phew1.github.io/photobooth to play with your camera.';
+    else if (camState === 'on' && hands.state === 'loading') t = 'Loading hand tracking…';
+    else if (camState === 'on' && hands.state === 'failed') t = 'Hand tracking couldn’t load. Check your internet connection, or drag the bottles with your finger.';
+    $('camStatus').textContent = t;
+    $('flipBtn').hidden = !(camOn && multiCam);
+    $('flipBtn').textContent = `Camera: ${facing === 'user' ? 'Front' : 'Back'}`;
   }
-  $('fileIn').addEventListener('change', async e => {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!f) return;
-    try {
-      const img = await loadImage(f);
-      const iw = img.width || img.naturalWidth, ih = img.height || img.naturalHeight, k = Math.min(1, 1280 / Math.max(iw, ih));
-      const c = mk(Math.round(iw * k), Math.round(ih * k));
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      if (img.close) img.close();
-      photo = c;
-      stopCamera(); camError = '';
-      onSourceChange();
-      toast('Using your photo.');
-    } catch (err) {
-      toast('That file couldn’t be opened. Try a JPG or PNG photo.');
-    }
-  });
+  $('flipBtn').addEventListener('click', () => startCamera(facing === 'user' ? 'environment' : 'user'));
 
-  function onSourceChange() {
-    let text;
-    if (camOn) text = 'Camera on. Every pin is you, live.';
-    else if (camError === 'blocked') text = 'Camera access was blocked. Allow it from your browser’s address bar, or use a photo.';
-    else if (camError === 'none') text = inViewer ? 'Live camera isn’t available in this preview. Use a photo instead.' : 'No camera found. Use a photo instead.';
-    else if (photo) text = 'Showing your photo, gently swaying so the motion effects have movement to work with.';
-    else text = inViewer ? 'Showing a sample figure. Use a photo to see yourself.' : 'Showing a sample figure. Turn on your camera to see yourself.';
-    $('statusText').textContent = text;
-    $('status').classList.toggle('on', camOn);
-    $('srcText').textContent = text;
-    $('camBtn').hidden = !canCam || camOn;
-    $('pCam').hidden = !canCam || camOn;
-    $('photoBtn').textContent = photo && !camOn ? 'Use another photo' : 'Use a photo';
-    $('photoBtn').className = 'pill ' + (canCam && !camOn ? 'soft' : camOn ? 'soft' : 'accent');
-    $('pPhoto').textContent = $('photoBtn').textContent;
-    $('pFlip').hidden = !(camOn && multiCam);
-    $('resetGlasses').hidden = !(current && current.interactive);
-    if (camOn && current && current.interactive) loadHands();
-    renderHandText();
+  // ---------- home ----------
+  function fitLogo() {
+    const h = $('logo'), spans = [...h.children];
+    h.style.fontSize = '100px';
+    const used = spans.reduce((s, el) => s + el.getBoundingClientRect().width, 0) + 25;
+    const target = h.clientWidth;
+    if (used > 0 && target > 0) h.style.fontSize = Math.min(220, 100 * target / used) + 'px';
   }
-  const openPicker = () => $('fileIn').click();
-  $('camBtn').addEventListener('click', () => { audio(); startCamera('user'); });
-  $('pCam').addEventListener('click', () => { audio(); startCamera('user'); });
-  $('photoBtn').addEventListener('click', openPicker);
-  $('pPhoto').addEventListener('click', openPicker);
-  $('pFlip').addEventListener('click', () => startCamera(facing === 'user' ? 'environment' : 'user'));
+  window.addEventListener('resize', fitLogo);
 
-  // =====================================================================
-  // Pins and the masonry feed
-  // =====================================================================
-  function pinEl({ ar, media, title, sub, av, onOpen, action }) {
-    const art = document.createElement('article');
-    art.className = 'pin';
-    const m = document.createElement('div');
-    m.className = 'pin-media';
-    m.style.aspectRatio = `1 / ${ar}`;
-    const open = document.createElement('button');
-    open.type = 'button'; open.className = 'pin-open';
-    open.setAttribute('aria-label', `Open ${title}`);
-    open.addEventListener('click', onOpen);
-    m.append(media, open);
-    if (action) {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'pin-act' + (action.keep ? ' keep' : '');
-      b.textContent = action.label;
-      b.addEventListener('click', ev => { ev.stopPropagation(); action.fn(); });
-      m.append(b);
-    }
-    const meta = document.createElement('div'); meta.className = 'pin-meta';
-    const t = document.createElement('h3'); t.className = 'pin-title'; t.textContent = title;
-    const s = document.createElement('p'); s.className = 'pin-sub';
-    const a = document.createElement('span'); a.className = 'av'; a.textContent = av.text; a.style.background = av.bg;
-    const st = document.createElement('span'); st.textContent = sub;
-    s.append(a, st);
-    meta.append(t, s);
-    art.append(m, meta);
-    return art;
-  }
-
-  const TILE_W = 200;
-  const tileSrcs = {};
-  const effectPins = EFFECTS.map(e => {
-    const w = TILE_W, h = Math.round(TILE_W * e.ar), key = `${w}x${h}`;
-    if (!tileSrcs[key]) tileSrcs[key] = newSrc(w, h);
-    const fx = e.make(w, h, { demo: true });
-    const el = pinEl({
-      ar: e.ar, media: fx.canvas, title: e.name, sub: `${KIND[e.kind].label} · ${e.tag}`,
-      av: { text: KIND[e.kind].av, bg: KIND[e.kind].bg },
-      onOpen: () => go(e.id), action: { label: 'Try it', fn: () => go(e.id) }
-    });
-    return { type: 'effect', e, fx, key, el, ar: e.ar, text: `${e.name} ${e.tag} ${e.kind} ${e.hint}`.toLowerCase() };
+  const TILE = 240;
+  const tileSrc = newSrc(TILE, TILE);
+  const tiles = EFFECTS.map(e => {
+    const fx = e.make(TILE, TILE, { demo: true });
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tile';
+    b.setAttribute('aria-label', `${e.name}: ${e.sub}. Opens your camera.`);
+    const text = document.createElement('span'); text.className = 'tile-text';
+    const n = document.createElement('span'); n.className = 'tile-name'; n.textContent = e.name;
+    const s = document.createElement('span'); s.className = 'tile-sub'; s.textContent = e.sub;
+    text.append(n, s);
+    b.append(fx.canvas, text);
+    b.addEventListener('click', () => go(e.id));
+    $('tilesPlay').append(b);
+    return { e, fx, el: b };
   });
 
   const captures = [];
-  let photoCount = 0;
-  let chip = 'all', query = '';
-
-  function layout(container, list) {
-    const W = container.clientWidth;
-    const gap = W < 560 ? 10 : 16, minCol = W < 560 ? 150 : 236;
-    const cols = Math.max(2, Math.min(7, Math.floor((W + gap) / (minCol + gap))));
-    const colEls = [], hs = [];
-    for (let i = 0; i < cols; i++) {
-      const d = document.createElement('div'); d.className = 'mcol'; d.style.gap = gap + 'px';
-      colEls.push(d); hs.push(0);
-    }
-    list.forEach(p => {
-      let k = 0;
-      for (let i = 1; i < cols; i++) if (hs[i] < hs[k] - 0.01) k = i;
-      colEls[k].append(p.el);
-      hs[k] += p.ar + 0.3;
-    });
-    container.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-    container.style.columnGap = gap + 'px';
-    container.replaceChildren(...colEls);
+  let photoCount = 0, stripNo = parseInt(store('silverbooth.count') || '0', 10) || 0;
+  function renderPhotos() {
+    const box = $('tilesPhotos');
+    box.replaceChildren(...captures.map(c => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tile';
+      b.setAttribute('aria-label', `Open ${c.label}`);
+      const img = document.createElement('img'); img.src = c.url; img.alt = '';
+      const text = document.createElement('span'); text.className = 'tile-text';
+      const n = document.createElement('span'); n.className = 'tile-name'; n.textContent = c.label;
+      const s = document.createElement('span'); s.className = 'tile-sub'; s.textContent = c.effect.name;
+      text.append(n, s);
+      b.append(img, text);
+      b.addEventListener('click', () => openViewer(c));
+      return b;
+    }));
+    $('photosSec').hidden = captures.length === 0;
+    const last = captures[0];
+    $('thumbBtn').hidden = !last;
+    $('thumbBtn').style.backgroundImage = last ? `url("${last.url}")` : '';
   }
 
-  function interleave(a, b) {
-    const out = [], n = Math.max(a.length, b.length);
-    for (let i = 0; i < n; i++) { if (i < b.length) out.push(b[i]); if (i < a.length) out.push(a[i]); }
-    return out;
-  }
-  function feedList() {
-    let caps = captures.map(c => c.pin), effs = effectPins;
-    if (chip !== 'all' && chip !== 'pins') { effs = effs.filter(p => p.e.kind === chip); caps = []; }
-    else if (chip === 'pins') effs = [];
-    let list = chip === 'all' ? interleave(caps, effs) : [...caps, ...effs];
-    if (query) list = list.filter(p => p.text.includes(query));
-    return list;
-  }
-  function renderFeed() {
-    const list = feedList(), empty = $('feedEmpty');
-    layout($('feed'), list);
-    if (list.length) empty.hidden = true;
-    else {
-      empty.hidden = false;
-      empty.textContent = query ? `No pins match “${$('q').value.trim()}”. Try “motion”, “print” or an effect name.`
-        : 'No pins yet. Open any effect and press Take photo. Your photos and strips show up here.';
-    }
-    document.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.chip === chip)));
-    document.querySelector('.chip[data-chip="pins"]').textContent = captures.length ? `Your pins · ${captures.length}` : 'Your pins';
-    $('navHome').classList.toggle('on', view === 'feed' && chip !== 'pins');
-    $('navPins').classList.toggle('on', view === 'feed' && chip === 'pins');
-  }
+  // ---------- camera screen ----------
+  const camEl = $('cam'), stage = $('stage');
+  let viewFx = null, viewSrc = null, strip = false, busy = false, stripToken = 0, lastFocus = null;
 
-  $('chips').addEventListener('click', e => {
-    const b = e.target.closest('.chip'); if (!b) return;
-    chip = b.dataset.chip;
-    try { location.hash = chip === 'pins' ? 'pins' : ''; } catch (err) { /* ignore */ }
-    renderFeed();
-  });
-  $('q').addEventListener('input', () => {
-    query = $('q').value.trim().toLowerCase();
-    if (view !== 'feed') goFeed();
-    else renderFeed();
-  });
-  $('logoBtn').addEventListener('click', () => { chip = 'all'; goFeed(); });
-  $('navHome').addEventListener('click', () => { chip = 'all'; goFeed(); });
-  $('navPins').addEventListener('click', () => { chip = 'pins'; goFeed(); try { location.hash = 'pins'; } catch (e) { /* ignore */ } });
-
-  let resizeTimer = 0;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => { if (view === 'feed') renderFeed(); else renderMore(); }, 120);
-  });
-
-  // =====================================================================
-  // Close-up view
-  // =====================================================================
-  let view = 'feed', current = null, capCurrent = null, backTo = null, feedScroll = 0;
-  let viewFx = null, viewSrc = null, mode = 'photo', busy = false, stripToken = 0, moreItems = [];
-  const media = $('media'), stage = $('stage');
-
+  // The picture takes the screen's shape (the camera is cropped to fit), so bottles and tips are never cut off.
   function viewDims() {
-    const L = 640, immersive = media.classList.contains('immersive');
-    let ar;
-    if (camOn && video.videoWidth) ar = video.videoWidth / video.videoHeight;
-    else if (immersive) ar = innerWidth >= innerHeight ? 4 / 3 : 3 / 4;
-    else ar = innerWidth > 760 ? 4 / 3 : 3 / 4;
+    const L = 640, ar = clamp(innerWidth / Math.max(1, innerHeight), 0.45, 2.2);
     return ar >= 1 ? [L, Math.round(L / ar)] : [Math.round(L * ar), L];
   }
   function buildView() {
@@ -1392,280 +1043,123 @@ svg { display: block; }
     viewSrc = newSrc(w, h);
     viewFx = current.make(w, h, { demo: false });
     stage.replaceChildren(viewFx.canvas, ...(viewFx.overlay ? [viewFx.overlay] : []));
-    media.style.aspectRatio = `${w} / ${h}`;
   }
   function dropView() {
     if (viewFx && viewFx.dispose) viewFx.dispose();
     viewFx = null; viewSrc = null;
     pointer.down = false; pointer.active = false;
-  }
-
-  function showPinView() {
-    if (view === 'feed') feedScroll = window.scrollY;
-    $('feedView').hidden = true;
-    $('pinView').hidden = false;
-    $('navHome').classList.remove('on'); $('navPins').classList.remove('on');
+    stage.replaceChildren();
   }
 
   function go(id) {
     const e = EFFECTS.find(x => x.id === id);
     if (!e) return;
+    audio();
     openEffect(e);
     try { if (location.hash !== '#' + id) location.hash = id; } catch (err) { /* hash routing unavailable */ }
   }
-
   function openEffect(e) {
-    cancelStrip();
-    showPinView();
-    view = 'effect'; current = e; capCurrent = null;
-    media.className = 'media fx-mode' + (e.interactive ? ' play' : '');
-    $('capImg').hidden = true; stage.hidden = false;
-    $('detTools').hidden = false; $('takeBtn').hidden = false; $('dlBtn').hidden = true;
-    $('fxBlocks').hidden = false; $('capBlocks').hidden = true;
-    $('detKind').textContent = KIND[e.kind].label;
-    $('detTitle').textContent = e.name;
-    $('detDesc').textContent = e.hint;
-    $('mediaBack').setAttribute('aria-label', 'Back');
-    buildView();
-    renderMine();
-    renderMore();
-    onSourceChange();
-    window.scrollTo(0, 0);
-  }
-
-  function openCapture(c) {
-    cancelStrip();
-    exitImmersive();
-    backTo = view === 'effect' && current ? current : backTo && view === 'capture' ? backTo : null;
-    showPinView();
-    view = 'capture'; capCurrent = c; dropView();
-    stage.replaceChildren();
-    media.className = 'media cap-mode';
-    media.style.aspectRatio = `${c.canvas.width} / ${c.canvas.height}`;
-    const img = $('capImg');
-    img.src = c.url; img.alt = `${c.label}, made with ${c.effect.name}`; img.hidden = false;
-    stage.hidden = true;
-    $('detTools').hidden = true; $('takeBtn').hidden = true; $('dlBtn').hidden = false;
-    $('fxBlocks').hidden = true; $('capBlocks').hidden = false;
-    askDelete(false);
-    $('detKind').textContent = c.kind === 'strip' ? 'Your strip' : 'Your photo';
-    $('detTitle').textContent = c.label;
-    $('detDesc').textContent = `Made with ${c.effect.name} · ${fmtWhen(c.at)}`;
-    $('tryBtn').textContent = `Try ${c.effect.name}`;
-    renderMore();
-    window.scrollTo(0, 0);
-  }
-
-  function goFeed() {
-    cancelStrip();
-    exitImmersive();
-    const wasFeed = view === 'feed';
-    view = 'feed'; current = null; capCurrent = null; backTo = null; dropView();
-    stage.replaceChildren();
-    $('pinView').hidden = true;
-    $('feedView').hidden = false;
-    renderFeed();
-    if (!wasFeed) window.scrollTo(0, feedScroll);
-    try {
-      const want = chip === 'pins' ? '#pins' : '';
-      if (location.hash !== want && !(want === '' && location.hash === '#')) location.hash = want;
-    } catch (e) { /* ignore */ }
-  }
-
-  function goBack() {
-    if (view === 'capture' && backTo) {
-      const e = backTo; backTo = null;
-      openEffect(e);
-      try { if (location.hash !== '#' + e.id) location.hash = e.id; } catch (err) { /* ignore */ }
-      return;
-    }
-    goFeed();
-  }
-
-  function route() {
-    const h = location.hash.slice(1);
-    if (h === 'pins') { chip = 'pins'; if (view !== 'feed') goFeed(); else renderFeed(); return; }
-    const e = EFFECTS.find(x => x.id === h);
-    if (e) { if (!(view === 'effect' && current === e)) openEffect(e); return; }
-    if (view === 'effect') goFeed();
-  }
-  window.addEventListener('hashchange', route);
-
-  $('mediaBack').addEventListener('click', () => { if (media.classList.contains('immersive')) exitImmersive(); else goBack(); });
-  $('tryBtn').addEventListener('click', () => { if (capCurrent) { backTo = null; go(capCurrent.effect.id); } });
-  $('dlBtn').addEventListener('click', () => { if (capCurrent) saveCapture(capCurrent); });
-
-  function enterImmersive() {
-    media.classList.add('immersive');
+    if (view === 'effect' && current === e) return;
+    lastFocus = document.activeElement;
+    view = 'effect'; current = e;
+    $('helpText').textContent = e.help;
+    $('helpPanel').hidden = true; $('helpBtn').setAttribute('aria-expanded', 'false');
+    $('resetBtn').hidden = !e.interactive;
+    camEl.hidden = false;
     document.documentElement.classList.add('locked');
-    $('mediaBack').setAttribute('aria-label', 'Exit full screen');
-    $('mediaBack').innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+    buildView();
+    startCamera(facing);
     $('shutter').focus({ preventScroll: true });
   }
-  function exitImmersive() {
-    if (!media.classList.contains('immersive')) return;
-    media.classList.remove('immersive');
+  function closeEffect() {
+    if (view !== 'effect') return;
+    stripToken++; setBusy(false);
+    stopCamera(); camState = 'off';
+    dropView();
+    view = 'home'; current = null;
+    camEl.hidden = true;
     document.documentElement.classList.remove('locked');
-    $('mediaBack').setAttribute('aria-label', 'Back');
-    $('mediaBack').innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg>';
+    renderPhotos();
+    if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true });
   }
-  $('fullBtn').addEventListener('click', enterImmersive);
+  function route() {
+    const e = EFFECTS.find(x => x.id === location.hash.slice(1));
+    if (e) openEffect(e); else closeEffect();
+  }
+  window.addEventListener('hashchange', route);
+  $('moreBtn').addEventListener('click', () => {
+    closeEffect();
+    try { if (location.hash) location.hash = ''; } catch (err) { /* ignore */ }
+  });
 
-  function renderMine() {
-    const box = $('mine'), mine = captures.filter(c => c.effect === current);
-    box.replaceChildren(...mine.map(c => {
-      const b = document.createElement('button');
-      b.type = 'button'; b.setAttribute('aria-label', `Open ${c.label}`);
-      const img = document.createElement('img'); img.src = c.url; img.alt = '';
-      b.append(img);
-      b.addEventListener('click', () => openCapture(c));
-      return b;
-    }));
-    $('mineEmpty').hidden = mine.length > 0;
-    $('mineLabel').textContent = mine.length ? `Your pins from this effect · ${mine.length}` : 'Your pins from this effect';
-  }
+  $('helpBtn').addEventListener('click', () => {
+    const open = $('helpPanel').hidden;
+    $('helpPanel').hidden = !open;
+    $('helpBtn').setAttribute('aria-expanded', String(open));
+  });
+  function renderSound() { $('soundBtn').textContent = `Sound: ${soundOn ? 'ON' : 'OFF'}`; }
+  $('soundBtn').addEventListener('click', () => { soundOn = !soundOn; store('silverbooth.sound', soundOn ? 'on' : 'off'); renderSound(); if (soundOn) beep(880); });
+  $('resetBtn').addEventListener('click', () => { if (viewFx && viewFx.reset) { viewFx.reset(); toast('Fresh glasses.'); } });
+  $('stripBtn').addEventListener('click', () => {
+    if (busy) return;
+    strip = !strip;
+    $('stripBtn').textContent = `Strip: ${strip ? 'ON' : 'OFF'}`;
+    $('stripBtn').setAttribute('aria-pressed', String(strip));
+    $('shutter').classList.toggle('strip', strip);
+    $('shutter').setAttribute('aria-label', strip ? 'Shoot a strip of four photos' : 'Take a photo');
+    toast(strip ? 'Strip: four photos, three seconds apart.' : 'One photo per tap.');
+  });
+  $('thumbBtn').addEventListener('click', () => { if (captures[0]) openViewer(captures[0]); });
 
-  function snapshotPin(p) {
-    const img = document.createElement('img');
-    img.alt = '';
-    try { img.src = p.fx.canvas.toDataURL('image/jpeg', 0.85); } catch (e) { /* leave blank */ }
-    return pinEl({
-      ar: p.ar, media: img, title: p.e.name, sub: `${KIND[p.e.kind].label} · ${p.e.tag}`,
-      av: { text: KIND[p.e.kind].av, bg: KIND[p.e.kind].bg },
-      onOpen: () => go(p.e.id), action: { label: 'Try it', fn: () => go(p.e.id) }
-    });
-  }
-  function capturePinEl(c) {
-    const img = document.createElement('img');
-    img.src = c.url; img.alt = '';
-    return pinEl({
-      ar: c.canvas.height / c.canvas.width, media: img, title: c.label, sub: `You · ${c.effect.name}`,
-      av: { text: 'YOU', bg: '#3D3D3A' },
-      onOpen: () => openCapture(c), action: { label: 'Download', keep: true, fn: () => saveCapture(c) }
-    });
-  }
-  function renderMore() {
-    if (view === 'feed') return;
-    let items;
-    if (view === 'effect') {
-      const others = effectPins.filter(p => p.e !== current);
-      const same = others.filter(p => p.e.kind === current.kind), diff = others.filter(p => p.e.kind !== current.kind);
-      items = [...same, ...diff].map(p => ({ el: snapshotPin(p), ar: p.ar }));
-      $('moreTitle').textContent = 'More like this';
-    } else {
-      const caps = captures.filter(c => c !== capCurrent).map(c => ({ el: capturePinEl(c), ar: c.canvas.height / c.canvas.width }));
-      const effs = effectPins.map(p => ({ el: snapshotPin(p), ar: p.ar }));
-      items = [...caps, ...effs];
-      $('moreTitle').textContent = caps.length ? 'More of your pins' : 'Keep playing';
-    }
-    moreItems = items;
-    document.querySelector('.more').hidden = items.length === 0;
-    layout($('more'), items);
-  }
-
-  // ---------- Pointer input for play effects (mouse, finger, pen) ----------
+  // ---------- pointer input (mouse, finger, pen) for play effects ----------
   const pointer = { active: false, down: false, x: 0, y: 0 };
   function toCanvas(e) {
     const c = viewFx && viewFx.canvas;
     if (!c) return null;
-    const r = c.getBoundingClientRect(), cover = media.classList.contains('immersive');
-    const s = cover ? Math.max(r.width / c.width, r.height / c.height) : Math.min(r.width / c.width, r.height / c.height);
+    const r = c.getBoundingClientRect();
+    const s = Math.max(r.width / c.width, r.height / c.height);   // the canvas covers the screen
     return { x: (e.clientX - r.left - (r.width - c.width * s) / 2) / s, y: (e.clientY - r.top - (r.height - c.height * s) / 2) / s };
   }
-  media.addEventListener('pointerdown', e => {
-    if (view !== 'effect' || !current || !current.interactive || e.target.closest('button')) return;
+  stage.addEventListener('pointerdown', e => {
+    if (view !== 'effect' || !current || !current.interactive) return;
     const p = toCanvas(e);
     if (!p) return;
     Object.assign(pointer, { active: true, down: true, x: p.x, y: p.y });
-    try { media.setPointerCapture(e.pointerId); } catch (err) { /* capture unavailable */ }
+    try { stage.setPointerCapture(e.pointerId); } catch (err) { /* capture unavailable */ }
     e.preventDefault();
     audio();
   });
-  media.addEventListener('pointermove', e => {
+  stage.addEventListener('pointermove', e => {
     if (!pointer.active) return;
     const p = toCanvas(e);
     if (p) { pointer.x = p.x; pointer.y = p.y; }
   });
   const pointerUp = () => { pointer.down = false; pointer.active = false; };
-  media.addEventListener('pointerup', pointerUp);
-  media.addEventListener('pointercancel', pointerUp);
+  stage.addEventListener('pointerup', pointerUp);
+  stage.addEventListener('pointercancel', pointerUp);
   function gatherInputs() {
     const list = handInputs();
     if (pointer.active) list.push({ id: 'p', x: pointer.x, y: pointer.y, down: pointer.down });
     return list;
   }
-  $('resetGlasses').addEventListener('click', () => { if (viewFx && viewFx.reset) { viewFx.reset(); toast('Fresh glasses.'); } });
 
-  // ---------- Modes ----------
-  function setMode(m) {
-    mode = m;
-    document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
-    $('shutter').classList.toggle('strip', m === 'strip');
-    $('shutter').setAttribute('aria-label', m === 'strip' ? 'Shoot a strip of four' : 'Take a photo');
-    $('takeBtn').textContent = m === 'strip' ? 'Shoot strip' : 'Take photo';
-    $('modeText').textContent = m === 'strip' ? 'Four photos with a 3-2-1 countdown before each, printed as a strip.' : 'One shot each time you press Take photo.';
-  }
-  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => { if (!busy) setMode(b.dataset.mode); }));
-
-  // ---------- Sound ----------
-  let actx = null, soundOn = store('silverbooth.sound') !== 'off';
-  function audio() {
-    if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } }
-    if (actx && actx.state === 'suspended') actx.resume().catch(() => {});
-    return actx;
-  }
-  function beep(freq) {
-    if (!soundOn) return; const a = audio(); if (!a) return;
-    const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
-    o.type = 'square'; o.frequency.value = freq;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.12);
-  }
-  function shutterSound() {
-    if (!soundOn) return; const a = audio(); if (!a) return;
-    const t = a.currentTime, len = Math.floor(a.sampleRate * 0.16), buf = a.createBuffer(1, len, a.sampleRate), ch = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (i < len * 0.3 ? 1 : 0.45);
-    const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
-    s.buffer = buf; f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 0.8;
-    g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
-    s.connect(f).connect(g).connect(a.destination); s.start(t);
-  }
-  function renderSound() {
-    $('soundBtn').setAttribute('aria-pressed', String(soundOn));
-    $('soundBtn').title = soundOn ? 'Sound on' : 'Sound off';
-    $('soundWave').style.display = soundOn ? '' : 'none';
-  }
-  $('soundBtn').addEventListener('click', () => {
-    soundOn = !soundOn; store('silverbooth.sound', soundOn ? 'on' : 'off'); renderSound();
-    if (soundOn) beep(880);
-    toast(soundOn ? 'Sound on.' : 'Sound off.');
-  });
-
-  // ---------- Capture ----------
+  // ---------- taking photos and strips ----------
   const countEl = $('count'), flashEl = $('flash'), lampEls = [...document.querySelectorAll('#lamps i')];
-  let toastTimer = 0;
-  function toast(t) {
-    const el = $('toast'); el.textContent = t; el.classList.add('show');
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
-  }
   function tick(n) { countEl.textContent = n; countEl.classList.remove('tick'); void countEl.offsetWidth; countEl.classList.add('tick'); }
   function flash() { flashEl.classList.remove('go'); void flashEl.offsetWidth; flashEl.classList.add('go'); }
   function snapshot() { const c = mk(viewFx.canvas.width, viewFx.canvas.height); c.getContext('2d').drawImage(viewFx.canvas, 0, 0); return c; }
   function setBusy(on) {
     busy = on;
-    $('shutter').disabled = on; $('takeBtn').disabled = on;
-    document.querySelectorAll('[data-mode]').forEach(b => b.disabled = on);
+    $('shutter').disabled = on; $('stripBtn').disabled = on;
     if (!on) { $('lamps').hidden = true; lampEls.forEach(l => l.className = ''); countEl.textContent = ''; }
   }
-  function cancelStrip() { stripToken++; if (busy) setBusy(false); }
-
   async function take() {
     if (busy || view !== 'effect' || !viewFx) return;
     audio();
-    if (mode === 'photo') {
+    if (!strip) {
       const c = snapshot(); shutterSound(); flash();
       addCapture('photo', c, current);
-      toast(`Pinned to Your pins (${captures.length}).`);
+      toast('Photo taken. Tap the picture at the bottom left to see it.');
       return;
     }
     setBusy(true);
@@ -1685,15 +1179,10 @@ svg { display: block; }
       if (token !== stripToken) return;
     }
     setBusy(false);
-    const c = addCapture('strip', renderStrip(frames, e), e);
-    toast('Strip pinned to Your pins.');
-    openCapture(c);
+    openViewer(addCapture('strip', renderStrip(frames, e), e));
   }
   $('shutter').addEventListener('click', take);
-  $('takeBtn').addEventListener('click', take);
 
-  // ---------- Strip ----------
-  let stripNo = parseInt(store('silverbooth.count') || '0', 10) || 0;
   function coverDraw(ctx, img, dx, dy, dw, dh) {
     const iw = img.width, ih = img.height;
     let sw, sh;
@@ -1709,7 +1198,7 @@ svg { display: block; }
     stripNo++; store('silverbooth.count', String(stripNo));
     const no = String(stripNo).padStart(4, '0'), d = new Date(), fy = PAD + FH * 4 + GAP * 3;
     x.fillStyle = '#151517'; x.textBaseline = 'alphabetic';
-    x.textAlign = 'left'; x.font = `800 54px ${DISPLAY}`; x.fillText('SILVER BOOTH', PAD, fy + 66);
+    x.textAlign = 'left'; x.font = `800 46px ${DISPLAY}`; x.fillText('SILVER BOOTH', PAD, fy + 64, FW * 0.7);
     x.textAlign = 'right'; x.font = `500 22px ${MONO}`; x.fillText(`No. ${no}`, SW - PAD, fy + 64);
     x.fillStyle = 'rgba(21,21,23,.66)'; x.font = `500 17px ${MONO}`;
     x.textAlign = 'left'; x.fillText(`${p2(d.getDate())} ${MON[d.getMonth()]} ${d.getFullYear()}  ${p2(d.getHours())}:${p2(d.getMinutes())}`, PAD, fy + 98);
@@ -1717,115 +1206,105 @@ svg { display: block; }
     c.stripNo = no;
     return c;
   }
-
-  // ---------- Your pins ----------
   function addCapture(kind, canvas, e) {
     const c = { kind, canvas, effect: e, at: new Date(), url: canvas.toDataURL('image/jpeg', 0.9) };
-    if (kind === 'strip') { c.label = `Strip No. ${canvas.stripNo}`; c.file = `silver-booth-strip-${canvas.stripNo}.png`; }
-    else { photoCount++; c.label = `Photo ${photoCount}`; c.file = `silver-booth-${e.id}-${p2(photoCount)}.png`; }
-    c.pin = { type: 'capture', c, el: capturePinEl(c), ar: canvas.height / canvas.width, text: `${c.label} ${e.name} ${kind} your pins you`.toLowerCase() };
+    if (kind === 'strip') { c.label = `Strip ${canvas.stripNo}`; c.file = `silver-booth-strip-${canvas.stripNo}.png`; }
+    else { photoCount++; c.label = `Photo ${photoCount}`; c.file = `silver-booth-${p2(photoCount)}.png`; }
     captures.unshift(c);
-    renderMine();
+    renderPhotos();
     return c;
   }
 
+  // ---------- photo viewer ----------
+  let viewing = null;
   function askDelete(on) {
     $('delBtn').hidden = on; $('delAsk').hidden = !on; $('delYes').hidden = !on; $('delNo').hidden = !on;
   }
+  function openViewer(c) {
+    viewing = c;
+    $('viewImg').src = c.url; $('viewImg').alt = `${c.label}, made with ${c.effect.name}`;
+    const d = c.at;
+    $('viewCap').textContent = `${c.label} · ${c.effect.name} · ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    $('viewMsg').textContent = '';
+    askDelete(false);
+    $('viewer').hidden = false;
+    document.documentElement.classList.add('locked');
+    $('closeView').focus({ preventScroll: true });
+  }
+  function closeViewer() {
+    $('viewer').hidden = true; viewing = null;
+    if (view !== 'effect') document.documentElement.classList.remove('locked');
+  }
+  $('closeView').addEventListener('click', closeViewer);
   $('delBtn').addEventListener('click', () => askDelete(true));
   $('delNo').addEventListener('click', () => askDelete(false));
   $('delYes').addEventListener('click', () => {
-    const i = captures.indexOf(capCurrent);
+    const i = captures.indexOf(viewing);
     if (i >= 0) captures.splice(i, 1);
-    toast('Pin deleted.');
-    goBack();
+    renderPhotos(); closeViewer();
+    if (view === 'effect') toast('Photo deleted.');
   });
-
-  const CANT_SAVE = 'Downloading isn’t available here. Press and hold (or right-click) the image to save it.';
-  async function saveCapture(c) {
+  const CANT_SAVE = 'Saving isn’t available here. Press and hold (or right-click) the picture to save it.';
+  $('saveBtn').addEventListener('click', async () => {
+    const c = viewing, msg = $('viewMsg');
+    if (!c) return;
     const blob = await new Promise(r => c.canvas.toBlob(r, 'image/png'));
-    if (!blob) { toast('That image couldn’t be prepared. Try again.'); return; }
+    if (!blob) { msg.textContent = 'That picture couldn’t be prepared. Try again.'; return; }
     if (inViewer) {
       const dl = await downloadsP;
-      if (!dl) { toast(CANT_SAVE); return; }
-      try { await dl.save({ filename: c.file, data: blob }); toast(`Saved ${c.file}.`); }
+      if (!dl) { msg.textContent = CANT_SAVE; return; }
+      try { await dl.save({ filename: c.file, data: blob }); msg.textContent = `Saved ${c.file}.`; }
       catch (e) {
         const code = e && e.code;
-        toast(code === 'declined' ? 'Download cancelled.' : code === 'rate_limited' ? 'A download is already waiting for your answer.' : CANT_SAVE);
+        msg.textContent = code === 'declined' ? 'Save cancelled.' : code === 'rate_limited' ? 'A save is already waiting for your answer.' : CANT_SAVE;
       }
     } else {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = c.file;
       document.body.append(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-      toast(`Saved ${c.file} to your downloads.`);
+      msg.textContent = `Saved ${c.file} to your downloads.`;
     }
-  }
+  });
 
-  // ---------- Keyboard ----------
+  // ---------- keyboard ----------
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if (media.classList.contains('immersive')) exitImmersive();
-      else if (view !== 'feed') goBack();
-    } else if ((e.code === 'Space' || e.key === ' ') && view === 'effect') {
+      if (!$('viewer').hidden) closeViewer();
+      else if (view === 'effect') $('moreBtn').click();
+    } else if ((e.code === 'Space' || e.key === ' ') && view === 'effect' && $('viewer').hidden) {
       const tag = e.target && e.target.tagName;
       if (tag !== 'BUTTON' && tag !== 'INPUT') { e.preventDefault(); take(); }
     }
   });
 
-  // =====================================================================
-  // Main loop: the close-up effect when one is open, otherwise every pin in the feed.
-  // =====================================================================
+  // ---------- main loop: the camera screen when open, otherwise the home tiles ----------
   let lastTileAt = 0, stillFrames = 0;
-  function stepTiles(t) {
-    for (const k in tileSrcs) drawSource(tileSrcs[k], t);
-    for (const p of effectPins) if (p.el.isConnected) p.fx.step(tileSrcs[p.key], t);
-  }
   function loop(ts) {
     requestAnimationFrame(loop);
     if (document.hidden) return;
     const t = ts / 1000;
     if (view === 'effect' && viewFx) {
+      if (!$('viewer').hidden) return;
       const [w, h] = viewDims();
       if (w !== viewSrc.w || h !== viewSrc.h) buildView();
-      drawSource(viewSrc, t);
+      drawSource(viewSrc);
       viewFx.step(viewSrc, t, viewFx.interactive ? gatherInputs() : undefined);
       return;
     }
-    if (view !== 'feed') return;
-    if (ts - lastTileAt < 50) return;   // feed pins refresh about 20 times a second
-    if (reduceMotion && !camOn && stillFrames > 45) return;
-    lastTileAt = ts;
-    stillFrames = camOn ? 0 : stillFrames + 1;
-    stepTiles(t);
+    if (ts - lastTileAt < 50) return;   // home tiles play their demo about 20 times a second
+    if (reduceMotion && stillFrames > 45) return;
+    lastTileAt = ts; stillFrames++;
+    drawSource(tileSrc);
+    for (const tl of tiles) tl.fx.step(tileSrc, t);
   }
 
-  // ---------- Light / dark ----------
-  let dark = document.documentElement.getAttribute('data-look') === 'dark';
-  function renderLook() {
-    document.documentElement.setAttribute('data-look', dark ? 'dark' : 'light');
-    $('lookBtn').setAttribute('aria-pressed', String(dark));
-    $('lookBtn').title = dark ? 'Switch to light mode' : 'Switch to dark mode';
-    $('moonIcon').toggleAttribute('hidden', dark);
-    $('sunIcon').toggleAttribute('hidden', !dark);
-  }
-  $('lookBtn').addEventListener('click', () => {
-    dark = !dark;
-    store('silverbooth.look', dark ? 'dark' : 'light');
-    renderLook();
-  });
-
-  // ---------- Start ----------
-  renderLook();
+  // ---------- start ----------
   renderSound();
-  setMode('photo');
-  onSourceChange();
-  renderFeed();
-  for (let i = 0; i < 24; i++) {   // warm up so every pin has a picture before the first paint
-    const t = i / 20;
-    for (const k in tileSrcs) drawSource(tileSrcs[k], t);
-    for (const p of effectPins) p.fx.step(tileSrcs[p.key], t);
-  }
+  renderPhotos();
+  fitLogo();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitLogo).catch(() => {});
+  for (let i = 0; i < 30; i++) { drawSource(tileSrc); for (const tl of tiles) tl.fx.step(tileSrc, i / 20); }
   route();
   requestAnimationFrame(loop);
 })();
