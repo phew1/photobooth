@@ -325,6 +325,18 @@ svg { display: block; }
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
 }
 @media (max-width: 760px) { .media.fx-mode .media-ctl { display: grid; } }
+/* play effects keep the bottom of the picture for the bottles and glasses, so the shutter sits on the right edge */
+.media.play .media-ctl {
+  left: auto; right: max(12px, env(safe-area-inset-right, 0px));
+  top: 50%; bottom: auto;
+  transform: translateY(-50%);
+  padding: 0;
+  gap: 10px;
+  background: none;
+}
+.media.play .media-ctl .seg { flex-direction: column; border-radius: 20px; }
+.media.play .media-ctl .seg button { padding: 9px 12px; }
+.media.play .shutter { width: 60px; height: 60px; }
 .shutter {
   width: 74px; height: 74px;
   padding: 0;
