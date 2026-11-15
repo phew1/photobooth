@@ -440,11 +440,11 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   // Close your hand on one to grab it (it follows your hand), tilt your hand to pour.
   // =====================================================================
   const DRINKS = [
-    // strength is how much one glass counts toward getting drunk (beer = 1); capacity is in glasses
-    { name: 'SOJU', liquid: [228, 246, 232], alpha: 0.6, strength: 2.5, capacity: 1.4,
+    // capacity is in glasses; kick is how hard one whole bottle hits (beer = 1, soju a bit more)
+    { name: 'SOJU', liquid: [228, 246, 232], alpha: 0.6, strength: 2.5, kick: 1.5, capacity: 1.4,
       glass: [58, 150, 78], inBottle: [36, 128, 62], cap: '#2F7D3F', label: '#F4F7F1', ink: '#1F5E2E', band: '#D23B2E',
       size: 0.95, ar: 0.3, neck: 0.3, crown: false },
-    { name: 'BEER', liquid: [226, 160, 34], alpha: 0.9, strength: 1, capacity: 1.4, foam: true,
+    { name: 'BEER', liquid: [226, 160, 34], alpha: 0.9, strength: 1, kick: 1, capacity: 1.4, foam: true,
       glass: [118, 64, 22], inBottle: [176, 104, 18], cap: '#C9A227', label: '#F3E6C8', ink: '#9E2A1F', band: '#9E2A1F',
       size: 1.02, ar: 0.29, neck: 0.4, crown: true }
   ];
@@ -509,11 +509,21 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
     let face = null, units = 0, nowT = 0, gulpT = -9, hicT = -9, nextHic = 0;
     const tmp = demo ? null : mk(w, h);
     const foamShare = g => g.fill > 0 ? g.amounts.reduce((s, a, i) => s + (DRINKS[i].foam ? a : 0), 0) / g.fill : 0;
-    const drunkness = () => clamp((units - 1.5) / 2.5, 0, 1);   // tipsy at two beers, drunk at three, wasted at four
+    // what you drink is counted in bottles: tipsy after about one and a half, drunk at two, wasted at three
+    const drunkness = () => clamp((units - 1.2) / 1.8, 0, 1);
     const nearMouth = p => !!(face && dist(p, face.mouth) < face.size * 0.45);
+    // An open mouth under a pouring spout catches the stream, even from above your head.
+    // A spout right at your lips always counts, open or not.
+    function catches(m) {
+      if (!face) return false;
+      if (nearMouth(m)) return true;
+      const M = face.mouth, dy = M.y - m.y, dx = Math.abs(M.x - m.x);
+      if (face.open < 0.045 || dy < -face.size * 0.1 || dy > h * 0.75) return false;
+      return dx < face.size * (0.5 + 0.6 * Math.min(1, Math.max(0, dy) / face.size));
+    }
     function drink(amount, shares) {
       let s = 0;
-      for (let i = 0; i < DRINKS.length; i++) s += shares[i] * DRINKS[i].strength;
+      for (let i = 0; i < DRINKS.length; i++) s += shares[i] * DRINKS[i].kick / DRINKS[i].capacity;
       units += amount * s;
       if (!demo && soundOn && nowT - gulpT > 0.38) { gulpT = nowT; gulp(); }
     }
@@ -525,19 +535,28 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
       let best = null, bd = Infinity;
       // a hand gets a generous grab zone around each bottle and glass
       for (const b of bottles) {
-        if (b.held) continue;
+        if (b.held || b.fly) continue;
         const dx = Math.abs(p.x - b.x), dy = Math.abs(p.y - b.y);
         const rx = loose ? Math.max(b.bw * 1.9, unit * 0.2) : b.bw * 0.95, ry = b.bh * (loose ? 0.85 : 0.55);
         if (dx < rx && dy < ry && dx + dy * 0.5 < bd) { bd = dx + dy * 0.5; best = b; }
       }
       for (const g of glasses) {
-        if (g.held) continue;
+        if (g.held || g.fly) continue;
         const dx = Math.abs(p.x - g.x), dy = Math.abs(p.y - g.y);
         if (dx < gw * (loose ? 1.45 : 0.8) && dy < gh * (loose ? 1.15 : 0.75) && dx + dy * 0.5 < bd) { bd = dx + dy * 0.5; best = g; }
       }
       return best;
     }
-    function release(id) { const o = holds[id]; if (o) { o.held = null; o.byHand = false; o.want = 0; } delete holds[id]; }
+    // let go while moving fast and it is thrown: it flies off spinning, and a fresh one comes back in its place
+    function release(id) {
+      const o = holds[id];
+      if (o) {
+        o.held = null; o.byHand = false; o.want = 0;
+        const sp = Math.hypot(o.vx || 0, o.vy || 0), cap = Math.min(1, unit * 12 / Math.max(1, sp));
+        if (!demo && sp > unit * 3.2) o.fly = { vx: o.vx * cap, vy: o.vy * cap, spin: clamp(o.vx / unit * 1.2, -9, 9) };
+      }
+      delete holds[id];
+    }
     function handle(inputs, t) {
       for (const p of inputs) {
         lastSeen[p.id] = t;
@@ -631,14 +650,33 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 
     function update(dt) {
       const k = Math.min(1, dt * 16), back = Math.min(1, dt * 7);
-      if (!demo) units = Math.max(0, units - dt * 0.012);   // slowly sober up
+      if (!demo) units = Math.max(0, units - dt * 0.004);   // slowly sober up (about a bottle every four minutes)
       for (const o of [...bottles, ...glasses]) {
+        const ox = o.x, oy = o.y;
+        if (o.fly) {
+          // thrown: fall with gravity and spin until it leaves the picture, then a fresh one is back in its place
+          o.fly.vy += unit * 9 * dt; o.x += o.fly.vx * dt; o.y += o.fly.vy * dt; o.rot += o.fly.spin * dt;
+          const r = o.kind === 'bottle' ? o.bh : gh;
+          if (o.y > h + r || o.y < -h || o.x < -r || o.x > w + r) {
+            o.fly = null; o.x = o.hx; o.y = o.hy; o.rot = 0; o.want = 0; o.vx = 0; o.vy = 0;
+            if (o.kind === 'bottle') { o.amount = o.d.capacity; o.emptyFor = 0; }
+            else { o.fill = 0; o.amounts = zeros(); o.bubbles = []; }
+          }
+          continue;
+        }
         if (o.held) { o.x += (o.tx - o.x) * k; o.y += (o.ty - o.y) * k; }
         else { o.x += (o.hx - o.x) * back; o.y += (o.hy - o.y) * back; }
+        // remember how fast the hand (or finger) carrying it moves, so letting go mid-swing throws it
+        if (o.held && dt > 0) {
+          const ptx = o.ptx == null ? o.tx : o.ptx, pty = o.pty == null ? o.ty : o.pty;
+          o.vx = (o.vx || 0) * 0.5 + (o.tx - ptx) / dt * 0.5; o.vy = (o.vy || 0) * 0.5 + (o.ty - pty) / dt * 0.5;
+          o.ptx = o.tx; o.pty = o.ty;
+        } else if (!o.held) { o.vx = 0; o.vy = 0; o.ptx = null; o.pty = null; }
       }
       let anyPour = false;
       for (const b of bottles) {
-        b.pouring = false; b.pourInto = null;
+        b.pouring = false; b.pourInto = null; b.drinking = false; b.missedMouth = false;
+        if (b.fly) continue;
         // an empty bottle put back on the table is swapped for a full one a few seconds later
         const home = !b.held && Math.abs(b.x - b.hx) < 2 && Math.abs(b.y - b.hy) < 2;
         b.emptyFor = b.amount <= 0.001 && home ? b.emptyFor + dt : 0;
@@ -651,22 +689,25 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
             const dx = Math.abs(mx - g.x);
             if (!g.held && dx < gw * 0.9 && b.y < g.y - gh * 0.2 && dx < best) { best = dx; target = g; }
           }
-          b.want = target ? TILT : b.y < b.hy - b.bh * 0.2 ? 0.18 : 0;
+          // with your face tracked, a bottle dragged above your face tips toward your mouth
+          const overFace = !target && face && b.y < face.mouth.y && Math.abs(b.x - face.mouth.x) < face.size * 1.6;
+          b.want = target ? TILT : overFace ? (face.mouth.x >= b.x ? TILT : -TILT) : b.y < b.hy - b.bh * 0.2 ? 0.18 : 0;
         }
         b.rot += (b.want - b.rot) * Math.min(1, dt * 8);
-        b.drinking = false;
-        // drinking straight from the bottle: its mouth is at your mouth, so it needs less tilt and goes into you
-        const m = mouthOf(b), atMouth = !!(b.held && nearMouth(m)), startAt = atMouth ? 0.85 : POUR_AT;
+        // drinking straight from the bottle: tip it over your open mouth (or against your lips) and the stream goes in
+        const m = mouthOf(b), atLips = !!(b.held && nearMouth(m)), startAt = atLips ? 0.85 : POUR_AT;
         if (Math.abs(b.rot) < startAt || b.amount <= 0.001) continue;
         const strength = clamp((Math.abs(b.rot) - startAt) / 0.6, 0.35, 1);
         const flow = Math.min(b.amount, dt * 0.3 * strength), one = DRINKS.map((_, i) => i === b.di ? 1 : 0);
         b.amount -= flow;
         b.pouring = true; anyPour = true; b.mouth = m; b.scol = b.d.liquid; b.salpha = b.d.alpha;
-        if (atMouth) {
+        if (b.held && catches(m)) {
           b.drinking = true; b.pourInto = null; b.landX = face.mouth.x; b.landY = face.mouth.y;
           drink(flow, one);
           continue;
         }
+        // held over your face with your mouth shut: it spills, and the tip asks you to open up
+        b.missedMouth = !!(face && b.held && face.mouth.y > m.y && Math.abs(face.mouth.x - m.x) < face.size * 1.2);
         // pouring: the stream falls from the mouth into whatever glass is underneath, or onto the floor
         const L = landing(b, m, Math.sign(b.rot));
         b.pourInto = L.g; b.landX = L.x; b.landY = L.y;
@@ -675,6 +716,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
       }
       for (const g of glasses) {
         g.pouring = false; g.drinking = false;
+        if (g.fly) continue;
         // tip a glass to drink by turning your hand. With a mouse or finger it tips by itself:
         // at your mouth when your face is tracked, otherwise when lifted into the upper half of the picture.
         // "at your mouth" means the glass itself is up against your mouth, so nothing spills on the way in
@@ -692,7 +734,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
           const out = Math.min(g.fill, dt * (atMouth ? 0.32 : 0.5) * strength), shares = g.amounts.map(a => a / g.fill);
           g.pouring = true; anyPour = true;
           g.mouth = lip; g.scol = g.color.slice(); g.salpha = g.alpha;
-          if (atMouth) {
+          if (atMouth || (g.held && catches(lip))) {
             g.drinking = true; g.landX = face.mouth.x; g.landY = face.mouth.y;
             drink(out, shares);
           } else {
@@ -799,9 +841,16 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
       ctx.save(); ctx.lineCap = 'round';
       const path = new Path2D();
       path.moveTo(m.x, m.y);
-      path.quadraticCurveTo(m.x + dir * unit * 0.08, m.y + (o.landY - m.y) * 0.1, o.landX + Math.sin(t * 40) * unit * 0.006, o.landY);
+      if (o.drinking) {
+        // into your mouth: a thin arc that leaves the spout sideways and curves down into the mouth
+        const M = { x: o.landX, y: o.landY }, dy = Math.max(unit * 0.08, M.y - m.y), wob = Math.sin(t * 30) * unit * 0.004;
+        path.bezierCurveTo(m.x + dir * unit * 0.22, m.y + dy * 0.04, M.x + (m.x - M.x) * 0.12 + wob, M.y - dy * 0.55, M.x, M.y);
+      } else {
+        path.quadraticCurveTo(m.x + dir * unit * 0.08, m.y + (o.landY - m.y) * 0.1, o.landX + Math.sin(t * 40) * unit * 0.006, o.landY);
+      }
       ctx.shadowColor = 'rgba(0,0,0,.3)'; ctx.shadowBlur = unit * 0.02;
-      ctx.strokeStyle = rgbStr(col, a); ctx.lineWidth = Math.max(1.5, unit * (o.kind === 'glass' ? 0.045 : 0.035)); ctx.stroke(path);
+      const width = o.drinking ? 0.026 : o.kind === 'glass' ? 0.045 : 0.035;
+      ctx.strokeStyle = rgbStr(col, a); ctx.lineWidth = Math.max(1.5, unit * width); ctx.stroke(path);
       ctx.shadowBlur = 0;
       ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = Math.max(0.8, unit * 0.011); ctx.stroke(path);
       ctx.restore();
@@ -852,11 +901,14 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
         if (!held) return handIns.some(p => pick(p)) ? 'Make a fist to grab it' : 'Move your hand to a bottle';
         if (held.kind === 'bottle') {
           if (held.amount <= 0.001) return 'This bottle is empty. Put it back for a full one';
-          return held.pouring ? '' : face ? 'Tilt to pour, or drink from the bottle' : 'Tilt your hand to pour';
+          if (held.drinking) return '';
+          if (held.pouring) return held.missedMouth ? 'Open your mouth!' : '';
+          return face ? 'Hold it over your open mouth and tilt, or pour into a glass' : 'Tilt your hand to pour';
         }
         if (held.fill <= 0) return 'Fill this glass first';
         return held.pouring ? '' : face ? 'Bring it to your mouth and tilt to drink' : 'Tilt your hand to pour it out';
       }
+      if (face && !touched) return 'Drag a bottle over your face and open your mouth';
       return touched ? '' : 'Drag a bottle over a glass to pour';
     }
     function drawTip(c2, text) {
@@ -896,7 +948,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 
     // ---- getting drunk: red cheeks first, then sway, double vision, blur and hiccups ----
     function drawBlush() {
-      const b = clamp((units - 0.5) / 2, 0, 1);
+      const b = clamp((units - 0.3) / 1.2, 0, 1);   // cheeks redden from about a third of a bottle
       if (!face || b <= 0.02) return;
       for (const c of face.cheeks) {
         const r = face.size * 0.2, g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r);
@@ -945,8 +997,8 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
     function drawMeter(c2) {
       if (units < 0.05) return;
       const I = drunkness();
-      const level = units < 1 ? 'SOBER' : units < 1.5 ? 'BUZZED' : I < 0.4 ? 'TIPSY' : I < 0.8 ? 'DRUNK' : 'WASTED';
-      const text = `${units.toFixed(1)} DRINKS · ${level}`, fs = 12 * px;
+      const level = units < 0.5 ? 'SOBER' : units < 1.2 ? 'BUZZED' : I < 0.35 ? 'TIPSY' : I < 0.85 ? 'DRUNK' : 'WASTED';
+      const text = `${units.toFixed(1)} BOTTLES · ${level}`, fs = 12 * px;
       c2.save();
       c2.font = `700 ${fs}px ${BODY}`; c2.textAlign = 'left'; c2.textBaseline = 'middle';
       const tw = c2.measureText(text).width, x = 14 * px, y = 60 * px;
@@ -986,7 +1038,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
         for (const b of bottles) { b.amount = b.d.capacity; b.emptyFor = 0; }
       },
       soberUp() { units = 0; nextHic = 0; },
-      state() { return { units, drunk: drunkness(), face, glasses: glasses.map(g => +g.fill.toFixed(2)), bottles: bottles.map(b => +b.amount.toFixed(2)) }; },
+      state() { return { units, drunk: drunkness(), face, glasses: glasses.map(g => +g.fill.toFixed(2)), bottles: bottles.map(b => +b.amount.toFixed(2)), flying: [...bottles, ...glasses].filter(o => o.fly).length, speed: bottles.map(b => Math.round(Math.hypot(b.vx || 0, b.vy || 0))), unit: Math.round(unit) }; },
       addUnits(n) { units += n; },
       dispose() { if (pourSrc) { try { pourSrc.stop(); } catch (e) { /* already stopped */ } } pourSrc = null; pourGain = null; }
     };
@@ -1032,7 +1084,9 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
     const L = hands.faceRes && hands.faceRes.faceLandmarks && hands.faceRes.faceLandmarks[0];
     if (!L) return null;
     const up = mapPt(L[13]), lo = mapPt(L[14]), le = mapPt(L[234]), re = mapPt(L[454]);
-    return { mouth: { x: (up.x + lo.x) / 2, y: (up.y + lo.y) / 2 }, size: Math.max(1, dist(le, re)), cheeks: [mapPt(L[50]), mapPt(L[280])] };
+    const size = Math.max(1, dist(le, re));
+    // open: the gap between the lips as a share of face width (closed is about 0.01, wide open 0.1 or more)
+    return { mouth: { x: (up.x + lo.x) / 2, y: (up.y + lo.y) / 2 }, size, open: dist(up, lo) / size, cheeks: [mapPt(L[50]), mapPt(L[280])] };
   }
   async function loadHands() {
     if (hands.state !== 'off') return;
@@ -1095,7 +1149,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 
   const EFFECTS = [
     { id: 'inuman', name: 'Inuman', sub: 'Grab and pour', make: makeInuman, interactive: true,
-      help: 'Make a fist around a bottle to grab it, then tilt your hand to pour into a glass. Bring a glass (or the bottle) to your mouth and tilt it to drink. Each bottle runs out; put an empty one back and a full one appears. After two or three beers you start to feel it, and soju hits faster. No camera? Drag the bottles with your mouse or finger.' }
+      help: 'Make a fist around a bottle to grab it. Hold it above your face, open your mouth and tilt: the drink pours into your mouth. Or tilt it over a glass to pour, then drink from the glass. Each bottle runs out; put an empty one back and a full one appears. Let go mid-swing to throw it. After two or three bottles you get drunk (soju hits a little harder). No camera? Drag the bottles with your mouse or finger.' }
   ];
 
   // ---------- picture source: the camera, or a plain backdrop when there is none ----------

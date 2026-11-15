@@ -1,10 +1,11 @@
 # Silver Booth
 
 A camera booth that runs in the browser. Open the **Inuman** effect and your camera turns on.
-Make a fist around a soju or beer bottle to grab it and tilt your hand to pour into a glass.
-Bring a glass or the bottle to your mouth and tilt it to drink. Each bottle runs out (put an
-empty one back and a full one appears). After two or three beers the screen starts to sway;
-soju hits faster. Take photos or 4-photo strips and save them.
+Make a fist around a soju or beer bottle to grab it. Hold it above your face, open your mouth
+and tilt: the drink arcs into your mouth. Or pour into a glass and drink from that. Bottles run
+out (put an empty one back and a full one appears), and letting go mid-swing throws them.
+After two or three bottles you get drunk: red cheeks, swaying, double vision and hiccups.
+Take photos or 4-photo strips and save them.
 
 Everything runs on the visitor's own phone or computer. Photos are never uploaded.
 
