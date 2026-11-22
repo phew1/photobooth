@@ -239,6 +239,57 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 .shutter:active:not(:disabled) { transform: translateX(-50%) scale(.92); background: rgba(255, 255, 255, .25); }
 .shutter.strip { border-color: var(--live); }
 .shutter:disabled { opacity: .5; }
+.shutter::after {
+  content: "";
+  position: absolute; inset: 7px;
+  border-radius: 50%;
+  background: transparent;
+  transition: inset .15s, border-radius .15s, background-color .15s;
+}
+.shutter.video::after { background: #E5322D; }
+.shutter.rec::after { inset: 20px; border-radius: 4px; background: #E5322D; }
+/* Photo · Video · Strip, like a phone camera */
+.modes {
+  position: absolute; z-index: 3;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
+  transform: translateX(-50%);
+  display: flex;
+  gap: 18px;
+}
+.modes button {
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, .72);
+  font: 700 12px/1 var(--body);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .7);
+  cursor: pointer;
+}
+.modes button[aria-pressed="true"] { color: var(--live); }
+.modes button:disabled { opacity: .4; cursor: default; }
+.rec-time {
+  position: absolute; z-index: 3;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, .55);
+  font: 600 14px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.rec-time::before {
+  content: "";
+  display: inline-block;
+  width: 9px; height: 9px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: #E5322D;
+  vertical-align: 0;
+  animation: blink 1s steps(2, jump-none) infinite;
+}
 .cam-status {
   position: absolute; z-index: 2;
   left: 50%; top: 50%;
@@ -283,7 +334,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 .toast {
   position: absolute; z-index: 4;
   left: 50%;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 132px);
   transform: translateX(-50%);
   max-width: calc(100% - 32px);
   padding: 8px 14px;
@@ -311,7 +362,10 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   background: rgba(0, 0, 0, .94);
   color: var(--on-dark);
 }
-.viewer img { display: block; max-width: 100%; max-height: 72vh; object-fit: contain; }
+.viewer img, .viewer video { display: block; max-width: 100%; max-height: 68vh; object-fit: contain; background: #000; }
+.view-actions .box.primary { background: var(--on-dark); color: #000; font-weight: 700; }
+.view-actions .box.primary:hover { background: #E6E6E6; }
+.view-tip { margin: 0; max-width: 46ch; font-size: 12.5px; color: rgba(255, 255, 255, .65); text-align: center; }
 .view-cap { margin: 0; font-family: var(--mono); font-size: 12px; color: rgba(255, 255, 255, .7); text-align: center; }
 .view-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
 .view-msg { margin: 0; min-height: 1.5em; font-size: 13px; text-align: center; }
@@ -351,7 +405,6 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   <div class="help-panel" id="helpPanel" hidden>
     <p id="helpText"></p>
     <div class="help-row">
-      <button class="box" id="stripBtn" type="button" aria-pressed="false">Strip: OFF</button>
       <button class="box" id="soundBtn" type="button">Sound: ON</button>
       <button class="box" id="resetBtn" type="button">Refill all</button>
       <button class="box" id="soberBtn" type="button">Sober up</button>
@@ -360,6 +413,12 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   <div class="bottom-left">
     <button class="thumb" id="thumbBtn" type="button" hidden aria-label="Open your last photo"></button>
   </div>
+  <div class="rec-time" id="recTime" hidden aria-live="off">0:00</div>
+  <div class="modes" id="modes" role="group" aria-label="What the shutter takes">
+    <button type="button" data-mode="photo" aria-pressed="true">Photo</button>
+    <button type="button" data-mode="video" aria-pressed="false">Video</button>
+    <button type="button" data-mode="strip" aria-pressed="false">Strip</button>
+  </div>
   <button class="shutter" id="shutter" type="button" aria-label="Take a photo"></button>
   <div class="bottom-right">
     <button class="box" id="flipBtn" type="button" hidden>Camera: Front</button>
@@ -367,18 +426,21 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </section>
 
-<section class="viewer" id="viewer" hidden aria-label="Photo">
+<section class="viewer" id="viewer" hidden aria-label="Your photo or video">
   <img id="viewImg" alt="">
+  <video id="viewVid" playsinline loop controls hidden></video>
   <p class="view-cap" id="viewCap"></p>
   <div class="view-actions">
-    <button class="box" id="saveBtn" type="button">Save</button>
+    <button class="box primary" id="saveBtn" type="button">Download</button>
+    <button class="box primary" id="shareBtn" type="button" hidden>Text / Share</button>
     <button class="box" id="delBtn" type="button">Delete</button>
-    <span id="delAsk" hidden>Delete this photo?</span>
+    <span id="delAsk" hidden>Delete it?</span>
     <button class="box" id="delYes" type="button" hidden>Yes, delete</button>
     <button class="box" id="delNo" type="button" hidden>Keep</button>
-    <button class="box" id="closeView" type="button">Close</button>
+    <button class="box" id="closeView" type="button">Keep playing</button>
   </div>
   <p class="view-msg" id="viewMsg" role="status" aria-live="polite"></p>
+  <p class="view-tip" id="viewTip" hidden>To text it to your phone, open this site on your phone and tap Text / Share there, or download it and send it from your computer.</p>
 </section>
 
 <script>
@@ -412,12 +474,22 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
     if (actx && actx.state === 'suspended') actx.resume().catch(() => {});
     return actx;
   }
+  // Every sound goes through one output, which also feeds video recordings so clips have the booth's sounds.
+  let master = null, recDest = null;
+  function audioOut(a) {
+    if (!master) {
+      master = a.createGain();
+      master.connect(a.destination);
+      try { recDest = a.createMediaStreamDestination(); master.connect(recDest); } catch (e) { recDest = null; }
+    }
+    return master;
+  }
   function beep(freq) {
     if (!soundOn) return; const a = audio(); if (!a) return;
     const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
     o.type = 'square'; o.frequency.value = freq;
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.12);
+    o.connect(g).connect(audioOut(a)); o.start(t); o.stop(t + 0.12);
   }
   function shutterSound() {
     if (!soundOn) return; const a = audio(); if (!a) return;
@@ -426,7 +498,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
     const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
     s.buffer = buf; f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 0.8;
     g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
-    s.connect(f).connect(g).connect(a.destination); s.start(t);
+    s.connect(f).connect(g).connect(audioOut(a)); s.start(t);
   }
 
   let toastTimer = 0;
@@ -643,7 +715,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
         pourSrc = a.createBufferSource(); pourSrc.buffer = buf; pourSrc.loop = true;
         const f = a.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 750; f.Q.value = 0.8;
         pourGain = a.createGain(); pourGain.gain.value = 0;
-        pourSrc.connect(f).connect(pourGain).connect(a.destination); pourSrc.start();
+        pourSrc.connect(f).connect(pourGain).connect(audioOut(a)); pourSrc.start();
       }
       pourGain.gain.setTargetAtTime(on && soundOn ? 0.14 : 0, actx.currentTime, 0.06);
     }
@@ -1056,14 +1128,14 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
     const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
     o.type = 'sine'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.12);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.28, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.18);
+    o.connect(g).connect(audioOut(a)); o.start(t); o.stop(t + 0.18);
   }
   function hicSound() {
     const a = audio(); if (!a) return;
     const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
     o.type = 'triangle'; o.frequency.setValueAtTime(560, t); o.frequency.exponentialRampToValueAtTime(300, t + 0.09);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
-    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.13);
+    o.connect(g).connect(audioOut(a)); o.start(t); o.stop(t + 0.13);
   }
 
   // camera pixels -> effect picture, matching how the camera is cropped and mirrored
@@ -1149,7 +1221,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 
   const EFFECTS = [
     { id: 'inuman', name: 'Inuman', sub: 'Grab and pour', make: makeInuman, interactive: true,
-      help: 'Make a fist around a bottle to grab it. Hold it above your face, open your mouth and tilt: the drink pours into your mouth. Or tilt it over a glass to pour, then drink from the glass. Each bottle runs out; put an empty one back and a full one appears. Let go mid-swing to throw it. After two or three bottles you get drunk (soju hits a little harder). No camera? Drag the bottles with your mouse or finger.' }
+      help: 'Make a fist around a bottle to grab it. Hold it above your face, open your mouth and tilt: the drink pours into your mouth. Or tilt it over a glass to pour, then drink from the glass. Each bottle runs out; put an empty one back and a full one appears. Let go mid-swing to throw it. After two or three bottles you get drunk (soju hits a little harder). Tap Photo, Video or Strip above the shutter; after each one you can download it or text it to your phone. No camera? Drag the bottles with your mouse or finger.' }
   ];
 
   // ---------- picture source: the camera, or a plain backdrop when there is none ----------
@@ -1256,7 +1328,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
       b.setAttribute('aria-label', `Open ${c.label}`);
       const img = document.createElement('img'); img.src = c.url; img.alt = '';
       const text = document.createElement('span'); text.className = 'tile-text';
-      const n = document.createElement('span'); n.className = 'tile-name'; n.textContent = c.label;
+      const n = document.createElement('span'); n.className = 'tile-name'; n.textContent = (c.kind === 'video' ? '▶ ' : '') + c.label;
       const s = document.createElement('span'); s.className = 'tile-sub'; s.textContent = c.effect.name;
       text.append(n, s);
       b.append(img, text);
@@ -1271,7 +1343,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 
   // ---------- camera screen ----------
   const camEl = $('cam'), stage = $('stage');
-  let viewFx = null, viewSrc = null, strip = false, busy = false, stripToken = 0, lastFocus = null;
+  let viewFx = null, viewSrc = null, mode = 'photo', busy = false, stripToken = 0, lastFocus = null, rec = null;
 
   // The picture takes the screen's shape (the camera is cropped to fit), so bottles and tips are never cut off.
   // Draw at the screen's own size (up to 1600 pixels across) so the picture is sharp and nothing looks blown up.
@@ -1317,6 +1389,7 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   }
   function closeEffect() {
     if (view !== 'effect') return;
+    stopRecording(true);
     stripToken++; setBusy(false);
     stopCamera(); camState = 'off';
     dropView();
@@ -1349,15 +1422,22 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   if (/[?&]debug\b/.test(location.search)) {
     window.__silverBooth = { tracking: () => ({ hands: hands.state, face: !!hands.face, faceErr: hands.faceErr || '', faces: hands.faceRes && hands.faceRes.faceLandmarks ? hands.faceRes.faceLandmarks.length : null }), state: () => viewFx && viewFx.state && viewFx.state(), addDrinks: n => viewFx && viewFx.addUnits && viewFx.addUnits(n) };
   }
-  $('stripBtn').addEventListener('click', () => {
-    if (busy) return;
-    strip = !strip;
-    $('stripBtn').textContent = `Strip: ${strip ? 'ON' : 'OFF'}`;
-    $('stripBtn').setAttribute('aria-pressed', String(strip));
-    $('shutter').classList.toggle('strip', strip);
-    $('shutter').setAttribute('aria-label', strip ? 'Shoot a strip of four photos' : 'Take a photo');
-    toast(strip ? 'Strip: four photos, three seconds apart.' : 'One photo per tap.');
-  });
+  // ---------- Photo · Video · Strip ----------
+  const modeBtns = [...document.querySelectorAll('#modes button')];
+  function setMode(m) {
+    mode = m;
+    modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+    const sh = $('shutter');
+    sh.classList.toggle('strip', m === 'strip');
+    sh.classList.toggle('video', m === 'video');
+    sh.setAttribute('aria-label', m === 'video' ? 'Start recording' : m === 'strip' ? 'Shoot a strip of four photos' : 'Take a photo');
+  }
+  modeBtns.forEach(b => b.addEventListener('click', () => {
+    if (busy || rec) return;
+    setMode(b.dataset.mode);
+    toast(mode === 'video' ? 'Video: tap to start, tap again to stop (up to 15 seconds).' : mode === 'strip' ? 'Strip: four photos, three seconds apart.' : 'Photo: one picture per tap.');
+  }));
+  const setModesDisabled = on => modeBtns.forEach(b => { b.disabled = on; });
   $('thumbBtn').addEventListener('click', () => { if (captures[0]) openViewer(captures[0]); });
 
   // ---------- pointer input (mouse, finger, pen) for play effects ----------
@@ -1399,16 +1479,18 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   function snapshot() { const c = mk(viewFx.canvas.width, viewFx.canvas.height); c.getContext('2d').drawImage(viewFx.canvas, 0, 0); return c; }
   function setBusy(on) {
     busy = on;
-    $('shutter').disabled = on; $('stripBtn').disabled = on;
+    $('shutter').disabled = on; setModesDisabled(on);
     if (!on) { $('lamps').hidden = true; lampEls.forEach(l => l.className = ''); countEl.textContent = ''; }
   }
   async function take() {
     if (busy || view !== 'effect' || !viewFx) return;
     audio();
-    if (!strip) {
+    if (mode === 'video') { if (rec) stopRecording(false); else startRecording(); return; }
+    if (mode === 'photo') {
       const c = snapshot(); shutterSound(); flash();
-      addCapture('photo', c, current);
-      toast('Photo taken. Tap the picture at the bottom left to see it.');
+      const cap = addCapture('photo', c, current);
+      // show it straight away, ready to download or text
+      setTimeout(() => { if (view === 'effect' && $('viewer').hidden) openViewer(cap); }, 450);
       return;
     }
     setBusy(true);
@@ -1431,6 +1513,73 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
     openViewer(addCapture('strip', renderStrip(frames, e), e));
   }
   $('shutter').addEventListener('click', take);
+
+  // ---------- video ----------
+  // Records the effect picture (bottles, drinks and drunk view included, tips and hand lines left out)
+  // plus the booth's sounds. MP4 where the browser can make it (plays on every phone), otherwise WebM.
+  const MAX_SECONDS = 15;
+  function pickVideoType() {
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+    const types = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4',
+      'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+    return types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+  }
+  function startRecording() {
+    if (!window.MediaRecorder || !viewFx || !viewFx.canvas.captureStream) { toast('This browser can’t record video. Try Chrome or Safari.'); return; }
+    const stream = viewFx.canvas.captureStream(30);
+    const a = audio();
+    if (a) { audioOut(a); if (recDest) recDest.stream.getAudioTracks().forEach(tr => stream.addTrack(tr)); }
+    const type = pickVideoType();
+    let recorder;
+    try { recorder = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 6e6 } : { videoBitsPerSecond: 6e6 }); }
+    catch (e) { stream.getVideoTracks().forEach(tr => tr.stop()); toast('This browser can’t record video. Try Chrome or Safari.'); return; }
+    const chunks = [], effect = current;
+    const r = { recorder, start: performance.now(), poster: snapshot(), timer: 0, discard: false };
+    recorder.ondataavailable = ev => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+    recorder.onstop = () => {
+      clearInterval(r.timer);
+      stream.getVideoTracks().forEach(tr => tr.stop());
+      if (rec === r) rec = null;
+      $('recTime').hidden = true;
+      $('shutter').classList.remove('rec');
+      $('shutter').setAttribute('aria-label', 'Start recording');
+      setModesDisabled(false);
+      if (r.discard) return;
+      const blob = new Blob(chunks, { type: (recorder.mimeType || type || 'video/webm').split(';')[0] });
+      if (!blob.size) { toast('The video came out empty. Try again.'); return; }
+      const c = addVideo(blob, r.poster, effect);
+      if (view === 'effect') openViewer(c);
+    };
+    rec = r;
+    recorder.start(250);
+    shutterSound();
+    $('shutter').classList.add('rec');
+    $('shutter').setAttribute('aria-label', 'Stop recording');
+    setModesDisabled(true);
+    $('recTime').textContent = '0:00'; $('recTime').hidden = false;
+    r.timer = setInterval(() => {
+      const s = (performance.now() - r.start) / 1000;
+      $('recTime').textContent = `0:${p2(Math.min(MAX_SECONDS, Math.floor(s)))}`;
+      if (s >= MAX_SECONDS) stopRecording(false);
+    }, 200);
+  }
+  function stopRecording(discard) {
+    const r = rec;
+    if (!r) return;
+    r.discard = !!discard;
+    if (!discard && viewFx) r.poster = snapshot();   // the last moment becomes the cover picture
+    try { r.recorder.stop(); } catch (e) { /* already stopped */ }
+  }
+  let videoCount = 0;
+  function addVideo(blob, poster, e) {
+    videoCount++;
+    const ext = /mp4/.test(blob.type) ? 'mp4' : 'webm';
+    const c = { kind: 'video', blob, effect: e, at: new Date(), canvas: poster, url: poster.toDataURL('image/jpeg', 0.85),
+      videoUrl: URL.createObjectURL(blob), label: `Video ${videoCount}`, file: `silver-booth-video-${p2(videoCount)}.${ext}` };
+    captures.unshift(c);
+    renderPhotos();
+    return c;
+  }
 
   function coverDraw(ctx, img, dx, dy, dw, dh) {
     const iw = img.width, ih = img.height;
@@ -1469,18 +1618,53 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   function askDelete(on) {
     $('delBtn').hidden = on; $('delAsk').hidden = !on; $('delYes').hidden = !on; $('delNo').hidden = !on;
   }
+  // The file for a photo, strip or video, made once and kept so sharing can start the moment you tap
+  async function fileFor(c) {
+    if (c.fileObj) return c.fileObj;
+    const blob = c.kind === 'video' ? c.blob : await new Promise(r => c.canvas.toBlob(r, 'image/png'));
+    if (!blob) return null;
+    c.fileObj = new File([blob], c.file, { type: blob.type || (c.kind === 'video' ? 'video/mp4' : 'image/png') });
+    return c.fileObj;
+  }
+  // Text / Share opens the phone's share sheet (Messages, AirDrop, WhatsApp...). Not every browser can share files.
+  const shareSupported = !inViewer && typeof navigator.share === 'function' && typeof navigator.canShare === 'function';
+  function updateShare(c) {
+    const show = ok => { $('shareBtn').hidden = !ok; $('viewTip').hidden = ok; };
+    show(shareSupported);
+    if (!shareSupported) return;
+    fileFor(c).then(f => {
+      if (viewing !== c) return;
+      let ok = false;
+      try { ok = !!(f && navigator.canShare({ files: [f] })); } catch (e) { ok = false; }
+      show(ok);
+    });
+  }
   function openViewer(c) {
     viewing = c;
-    $('viewImg').src = c.url; $('viewImg').alt = `${c.label}, made with ${c.effect.name}`;
+    const img = $('viewImg'), vid = $('viewVid');
+    if (c.kind === 'video') {
+      img.hidden = true;
+      vid.hidden = false;
+      vid.src = c.videoUrl; vid.poster = c.url;
+      vid.muted = false;
+      vid.play().catch(() => { vid.muted = true; vid.play().catch(() => {}); });
+    } else {
+      vid.pause(); vid.hidden = true; vid.removeAttribute('src');
+      img.hidden = false;
+      img.src = c.url; img.alt = `${c.label}, made with ${c.effect.name}`;
+    }
     const d = c.at;
     $('viewCap').textContent = `${c.label} · ${c.effect.name} · ${p2(d.getHours())}:${p2(d.getMinutes())}`;
     $('viewMsg').textContent = '';
     askDelete(false);
+    updateShare(c);
     $('viewer').hidden = false;
     document.documentElement.classList.add('locked');
-    $('closeView').focus({ preventScroll: true });
+    $('saveBtn').focus({ preventScroll: true });
   }
   function closeViewer() {
+    const vid = $('viewVid');
+    vid.pause(); vid.removeAttribute('src'); vid.load();
     $('viewer').hidden = true; viewing = null;
     if (view !== 'effect') document.documentElement.classList.remove('locked');
   }
@@ -1488,17 +1672,31 @@ button:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
   $('delBtn').addEventListener('click', () => askDelete(true));
   $('delNo').addEventListener('click', () => askDelete(false));
   $('delYes').addEventListener('click', () => {
-    const i = captures.indexOf(viewing);
+    const c = viewing, i = captures.indexOf(c);
     if (i >= 0) captures.splice(i, 1);
-    renderPhotos(); closeViewer();
-    if (view === 'effect') toast('Photo deleted.');
+    closeViewer();
+    if (c && c.videoUrl) URL.revokeObjectURL(c.videoUrl);
+    renderPhotos();
+    if (view === 'effect') toast('Deleted.');
   });
-  const CANT_SAVE = 'Saving isn’t available here. Press and hold (or right-click) the picture to save it.';
+  $('shareBtn').addEventListener('click', async () => {
+    const c = viewing, msg = $('viewMsg');
+    if (!c) return;
+    const f = c.fileObj || await fileFor(c);
+    if (!f) { msg.textContent = 'That couldn’t be prepared. Try again.'; return; }
+    try {
+      await navigator.share({ files: [f], title: 'Silver Booth' });
+      msg.textContent = 'Sent.';
+    } catch (e) {
+      if (!e || e.name !== 'AbortError') msg.textContent = 'Couldn’t share it from here. Download it and send it instead.';
+    }
+  });
+  const CANT_SAVE = 'Downloading isn’t available here. Press and hold (or right-click) the picture to save it.';
   $('saveBtn').addEventListener('click', async () => {
     const c = viewing, msg = $('viewMsg');
     if (!c) return;
-    const blob = await new Promise(r => c.canvas.toBlob(r, 'image/png'));
-    if (!blob) { msg.textContent = 'That picture couldn’t be prepared. Try again.'; return; }
+    const blob = c.kind === 'video' ? c.blob : await new Promise(r => c.canvas.toBlob(r, 'image/png'));
+    if (!blob) { msg.textContent = 'That couldn’t be prepared. Try again.'; return; }
     if (inViewer) {
       const dl = await downloadsP;
       if (!dl) { msg.textContent = CANT_SAVE; return; }

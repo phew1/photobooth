@@ -5,7 +5,8 @@ Make a fist around a soju or beer bottle to grab it. Hold it above your face, op
 and tilt: the drink arcs into your mouth. Or pour into a glass and drink from that. Bottles run
 out (put an empty one back and a full one appears), and letting go mid-swing throws them.
 After two or three bottles you get drunk: red cheeks, swaying, double vision and hiccups.
-Take photos or 4-photo strips and save them.
+Take a photo, a video (up to 15 seconds, with sound) or a 4-photo strip. Afterwards you can
+download it, or on a phone tap Text / Share to send it by text, AirDrop, WhatsApp and so on.
 
 Everything runs on the visitor's own phone or computer. Photos are never uploaded.
 
